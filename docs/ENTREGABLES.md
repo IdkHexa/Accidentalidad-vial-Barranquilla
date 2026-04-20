@@ -1,42 +1,54 @@
-# Plan de Entregables y Delimitación Técnica
+# Plan de Entregables y Delimitación Técnica (Actualizado)
 
-El siguiente cronograma vincula las exigencias modulares de la asignatura con la arquitectura real de la aplicación web, marcando los límites de cada fase para un desarrollo ordenado.
-
----
-
-## ENTREGA 1: Ingesta de Datos Abiertos
-*(Referente a Módulos 1, 2 y 3)*
-
-**Objetivo:** Desarrollar el mecanismo robusto que se conecte a *datos.gov.co*, obtenga y perfile los paquetes de datos abstrayéndolos a clases.
-
-*   **Puntos Lógicos:** `api/api_client.py`, `models/entidades.py` y `data/etl.py`.
-*   **Alances y Criterios:** Lograr mapear un lote de JSON crudo a clases de transferencia (DTO) estructuradas en Python, forzando la corrección de campos sucios (p. ej. homogeneizar meses y asegurar números enteros).
+Este cronograma ajusta las entregas de la asignatura a una distribución bimodal, permitiendo un desarrollo más granular y enfocado por fases.
 
 ---
 
-## ENTREGA 2: Motor de Persistencia de Datos DAO (CRUD)
-*(Referente al Módulo 4)*
+## ENTREGA 1: Ingesta y Limpieza de Datos
+*(Referente a Módulos 1 y 2)*
 
-**Objetivo:** Integrar un gestor de base de datos relacional para sostener la información obtenida.
+**Objetivo:** Desarrollar el mecanismo robusto de conexión y el perfilamiento de datos crudos.
 
-*   **Puntos Lógicos:** `data/database.py` y `data/storage.py`.
-*   **Alcances y Criterios:** Emplear SQLAlchemy para diseñar modelos fijos en SQLite locales. Desarrollar el Repositorio CRUD aislando enteramente las sentencias SQL para que puedan ser convocadas transparentemente por cualquier parte del sistema superior. Debe ser capaz de insertar bloques de cientos de registros con transacciones limpias.
-
----
-
-## ENTREGA 3: Despliegue Web MVC y Analítica
-*(Referente a Módulos 5, 6 y 7)*
-
-**Objetivo:** Articular el flujo central, conectando los servicios internos construidos para proveer información estructurada al usuario final a través de la web.
-
-*   **Puntos Lógicos:** `views/app.py`, `controllers/main_controller.py`, `views/templates/index.html` y los recursos de `views/static/`.
-*   **Alcances y Criterios:** Instanciar las rutas REST y las vistas HTML con FastAPI. Establecer asincronía en el frontend (`Alpine.js`) para manejar peticiones que alimenten diagramas analíticos reactivos usando librerías de dibujo orientadas a desempeño masivo (`Apache ECharts`). El navegador no debe saturarse con la recarga de datos.
+*   **Alcances:** 
+    *   Conexión estable a la API Socrata con paginación avanzada.
+    *   Mapeo de registros crudos a clases DTO (Pydantic).
+    *   Homogeneización de campos (Días, meses y tipos numéricos).
+*   **Archivos Clave:** `api/api_client.py`, `models/entidades.py`, `data/etl.py`.
 
 ---
 
-## ENTREGA FINAL: Calidad, Excepciones y Presentación
-*(Referente al Módulo 8)*
+## ENTREGA 2: Persistencia y Repositorio DAO
+*(Referente a Módulos 3 y 4)*
 
-**Objetivo:** Estabilizar el software contra fallas no previstas o caídas de red, y redactar los manuales base.
+**Objetivo:** Implementar la capa de almacenamiento para que los datos limpios sean persistentes.
 
-*   **Alcances y Criterios:** Sustituir las pruebas de consola estándar por bitácoras transaccionales y de depuración (`logs`). Consolidar un `requirements.txt` o documentación del entorno virtual que garantice que la plataforma puede desplegarse en frío desde otro dispositivo.
+*   **Alcances:**
+    *   Diseño del patrón Repositorio (DAO) para aislar la lógica de datos.
+    *   Configuración del motor de base de datos relacional (SQLite/SQLAlchemy).
+    *   Migración de objetos de memoria a tablas físicas.
+*   **Archivos Clave:** `data/storage.py`, `data/database.py`.
+
+---
+
+## ENTREGA 3: Controladores y Lógica de Negocio
+*(Referente a Módulos 5 y 6)*
+
+**Objetivo:** Conectar la base de datos con la interfaz de usuario mediante la lógica del controlador.
+
+*   **Alcances:**
+    *   Configuración de endpoints con FastAPI.
+    *   Implementación de la lógica de negocio en los controladores.
+    *   Preparación de los datos para ser consumidos por el Frontend.
+
+---
+
+## ENTREGA FINAL: Interfaz, Visualización y Calidad
+*(Referente a Módulos 7 y 8)*
+
+**Objetivo:** Desplegar la interfaz web interactiva y asegurar la estabilidad del sistema.
+
+*   **Alcances:**
+    *   Renderizado de plantillas HTML y componentes reactivos (Alpine.js).
+    *   Generación de analítica interactiva (Apache ECharts).
+    *   Manejo global de excepciones, bitácoras (logs) y manuales técnicos.
+*   **Archivos Clave:** `views/`, `main.py`.
