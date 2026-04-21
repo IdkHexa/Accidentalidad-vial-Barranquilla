@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
+from typing import Optional
 
 # Esta clase sirve para darle estructura a los datos que bajamos
 class AccidenteDTO(BaseModel):
@@ -16,6 +17,10 @@ class AccidenteDTO(BaseModel):
     CANT_HERIDOS_EN_SITIO_ACCIDENTE: int = Field(default=0, alias="cant_heridos_en_sitio_accidente")
     CANT_MUERTOS_EN_SITIO_ACCIDENTE: int = Field(default=0, alias="cant_muertos_en_sitio_accidente")
     CANTIDAD_ACCIDENTES: int = Field(default=0, alias="cantidad_accidentes")
+
+    # Campos de ubicación
+    LATITUD: Optional[float] = Field(default=None, alias="latitud")
+    LONGITUD: Optional[float] = Field(default=None, alias="longitud")
 
     # Función para limpiar el nombre del mes y traducirlo
     @field_validator("MES_ACCIDENTE", mode="before")
@@ -53,5 +58,5 @@ class AccidenteDTO(BaseModel):
     def asegurar_entero(cls, v):
         try:
             return int(float(v))
-        except:
+        except (ValueError, TypeError):
             return 0
