@@ -5,6 +5,7 @@ Este cronograma ajusta las entregas de la asignatura a una distribución bimodal
 ---
 
 ## ENTREGA 1: Ingesta y Limpieza de Datos
+**Responsable:** Jofier Salas (Capas de Conexión y Modelo)
 *(Referente a Módulos 1 y 2)*
 
 **Objetivo:** Desarrollar el mecanismo robusto de conexión y el perfilamiento de datos crudos.
@@ -18,6 +19,7 @@ Este cronograma ajusta las entregas de la asignatura a una distribución bimodal
 ---
 
 ## ENTREGA 2: Persistencia y Repositorio DAO
+**Responsable:** Jofier Salas (Repositorio y ETL)
 *(Referente a Módulos 3 y 4)*
 
 **Objetivo:** Implementar la capa de almacenamiento para que los datos limpios sean persistentes.
@@ -31,6 +33,7 @@ Este cronograma ajusta las entregas de la asignatura a una distribución bimodal
 ---
 
 ## ENTREGA 3: Controladores y Lógica de Negocio
+**Responsable:** Juan Medina (Capas de Controlador y Enrutado)
 *(Referente a Módulos 5 y 6)*
 
 **Objetivo:** Conectar la base de datos con la interfaz de usuario mediante la lógica del controlador.
@@ -43,6 +46,7 @@ Este cronograma ajusta las entregas de la asignatura a una distribución bimodal
 ---
 
 ## ENTREGA FINAL: Interfaz, Visualización y Calidad
+**Responsable:** Juan Medina (Capas de Vista Interfaz)
 *(Referente a Módulos 7 y 8)*
 
 **Objetivo:** Desplegar la interfaz web interactiva y asegurar la estabilidad del sistema.
