@@ -1,5 +1,21 @@
+# Entorno virtual
+venv/
+.env
+
+# Archivos de caché de Python
 __pycache__/
 *.pyc
+
+# Archivos temporales de VS Code o editores
+.vscode/
+.idea/
+
+# Base de datos (Para la Entrega 2)
 *.db
-.env
+*.sqlite
+
+# Logs y reportes
 logs/
+
+# Notebooks y sus archivos temporales
+.ipynb_checkpoints/
