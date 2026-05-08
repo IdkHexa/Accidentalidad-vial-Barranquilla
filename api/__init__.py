@@ -1,2 +1,1 @@
-# Este archivo le dice a Python que esta carpeta es un "paquete".
-# Esto permite que otros archivos puedan hacer: from api.api_client import ...
+"""Paquete de acceso a fuentes de datos externas."""

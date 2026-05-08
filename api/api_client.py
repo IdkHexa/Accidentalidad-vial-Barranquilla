@@ -1,55 +1,63 @@
+"""Cliente asincrono para consultar el dataset publico.
+
+Este modulo concentra la comunicacion HTTP con la API y aplica paginacion para
+traer los datos en lotes controlados.
+"""
+
 import httpx
 from config import API_URL
 
-# Esta clase es nuestro "navegador" para ir a la página de datos abiertos y bajar los JSON
+
 class ApiClient:
+    """Encapsula la consulta HTTP al portal de datos abiertos."""
+
     def __init__(self):
-        # Configuramos el cliente con un tiempo de espera de 30 segundos (por si el internet está lento)
+        """Crea el cliente asincrono con un tiempo de espera fijo."""
         self.client = httpx.AsyncClient(timeout=30.0)
 
-    # Esta función se encarga de pedir los datos por pedazos (paginación)
     async def get_dataset_limit(self, dataset_id, limit):
-        # Armamos la URL usando el ID que nos pasaron (ej. 'yb9r-2dsi' para accidentes)
-        url_final = f"https://www.datos.gov.co/resource/{dataset_id}.json"
-        
-        offset = 0 # Empezamos desde el primer registro de la fila
-        data = []  # Lista vacía donde iremos metiendo cada fila que bajemos
-        
-        # Bucle para ir pidiendo datos por pedazos (máximo 1000 por vuelta para no saturar)
+        """
+        Descarga hasta `limit` registros del dataset solicitado.
+
+        Parametros:
+        - `dataset_id`: identificador del recurso en Socrata.
+        - `limit`: numero maximo de filas a recuperar.
+        """
+        url_final = API_URL.replace("yb9r-2dsi", dataset_id)
+
+        # `offset` indica desde que posicion inicia cada pagina.
+        offset = 0
+        data = []
+
         while offset < limit:
-            # Calculamos cuántos faltan para no pasarnos del límite que pidió el usuario
+            # `paso` controla el tamano del lote en cada consulta.
             paso = min(1000, limit - offset)
-            
+
             try:
-                # Hacemos la petición real a Internet (es asíncrona para no congelar el programa)
                 response = await self.client.get(
-                    url_final, 
+                    url_final,
                     params={
-                        "$limit": paso, 
-                        "$offset": offset, 
-                        "$order": "fecha_accidente" # Pedimos que vengan ordenados por fecha
-                    }
+                        "$limit": paso,
+                        "$offset": offset,
+                        "$order": "fecha_accidente",
+                    },
                 )
-                # Si la página web devuelve un error (como 404), esto lanza una excepción
                 response.raise_for_status()
-                
-                # Convertimos el texto de internet en una lista de diccionarios de Python
+
                 lote = response.json()
-                data.extend(lote) # Metemos el lote nuevo en nuestra lista maestra
-                
-                # Sumamos al offset para que en la próxima vuelta pida los registros siguientes
+                data.extend(lote)
                 offset = offset + paso
-                
-                # Si bajamos menos de lo que pedimos, es porque la API ya no tiene más datos
+
+                # Si la API devuelve menos filas de las pedidas, ya no hay mas datos.
                 if len(lote) < paso:
                     break
             except Exception as e:
-                # Si algo falla (se cortó el wifi, etc.), avisamos y devolvemos lo que tengamos
+                # Ante un error se conserva lo ya descargado.
                 print(f"Error al bajar datos de la API: {e}")
                 break
-                
+
         return data
 
-    # Función importante para cerrar la conexión y liberar recursos de la PC
     async def close(self):
+        """Cierra el cliente HTTP al finalizar la consulta."""
         await self.client.aclose()

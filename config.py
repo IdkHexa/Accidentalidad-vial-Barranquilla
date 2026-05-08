@@ -1,23 +1,27 @@
-# Archivo de configuración global del proyecto
+"""Configuracion general del proyecto.
+
+Centraliza los valores usados para acceder al dataset y a servicios externos.
+"""
+
 import os
 from dotenv import load_dotenv
 
-# Cargamos las variables de entorno definidas en el archivo .env
+# Carga las variables del archivo .env.
 load_dotenv()
 
-# URL oficial del dataset de accidentalidad de la Alcaldía de Barranquilla
+# URL del dataset consultado por la aplicacion.
 API_URL = "https://www.datos.gov.co/resource/yb9r-2dsi.json"
 
-# Obtenemos la llave de Google Maps desde el sistema
+# Llave usada por el modulo de geocodificacion.
 GOOGLE_MAPS_KEY = os.getenv("GOOGLE_MAPS_KEY")
 
-# Validación: Si la llave no existe, lanzamos un aviso claro
+# Informa si falta la llave del servicio externo.
 if not GOOGLE_MAPS_KEY:
-    print("ADVERTENCIA: No se encontró la GOOGLE_MAPS_KEY en el archivo .env")
-    print("El geocodificador fallará si intentas usarlo sin una llave válida.")
+    print("ADVERTENCIA: No se encontro la GOOGLE_MAPS_KEY en el archivo .env")
+    print("El geocodificador fallara si intentas usarlo sin una llave valida.")
 
-# Este bloque solo se ejecuta si corres este archivo directamente
 if __name__ == "__main__":
-    print(f"Configuración Actual: ")
+    # Muestra la configuracion cargada para una verificacion basica.
+    print("Configuracion actual:")
     print(f"API URL: {API_URL}")
-    print(f"Google Key Cargada: {'SÍ' if GOOGLE_MAPS_KEY else 'NO'}")
+    print(f"Google Key Cargada: {'SI' if GOOGLE_MAPS_KEY else 'NO'}")
