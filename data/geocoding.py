@@ -4,11 +4,14 @@ Consulta coordenadas para una direccion y guarda resultados repetidos en un
 archivo JSON para no hacer la misma solicitud varias veces.
 """
 
-import googlemaps
 import json
 import os
-from .direccion_parser import DireccionParseada
+
+import googlemaps
+
 from config import GOOGLE_MAPS_KEY
+
+from .direccion_parser import DireccionParseada
 
 
 class GeoCoder:
@@ -19,10 +22,20 @@ class GeoCoder:
     """
 
     def __init__(self, cache_file="data/geocache.json"):
-        # Crea el cliente del servicio externo y carga el cache existente.
-        self.gmaps = googlemaps.Client(key=GOOGLE_MAPS_KEY)
+        """Prepara el cache local y, si hay llave, el cliente de Google Maps.
+
+        ``cache_file`` indica la ruta del archivo JSON donde se guardan
+        las coordenadas ya consultadas.  Si ``GOOGLE_MAPS_KEY`` no esta
+        definida en el entorno, ``self.gmaps`` se deja en ``None`` y el
+        metodo ``obtener_coordenadas()`` retorna ``None`` sin intentar la
+        llamada a la API.
+        """
         self.cache_file = cache_file
         self.cache = self._cargar_cache()
+        if GOOGLE_MAPS_KEY:
+            self.gmaps = googlemaps.Client(key=GOOGLE_MAPS_KEY)
+        else:
+            self.gmaps = None
 
     def _cargar_cache(self):
         """Lee el archivo JSON del cache si ya existe."""
@@ -36,7 +49,9 @@ class GeoCoder:
         with open(self.cache_file, "w", encoding="utf-8") as f:
             json.dump(self.cache, f, ensure_ascii=False, indent=4)
 
-    def obtener_coordenadas(self, direccion: DireccionParseada) -> tuple[float, float] | None:
+    def obtener_coordenadas(
+        self, direccion: DireccionParseada
+    ) -> tuple[float, float] | None:
         """
         Busca coordenadas para la direccion recibida.
 
@@ -44,6 +59,8 @@ class GeoCoder:
         """
         query = str(direccion)
         if not query:
+            return None
+        if self.gmaps is None:
             return None
 
         # Usa primero el cache para evitar consultas repetidas.

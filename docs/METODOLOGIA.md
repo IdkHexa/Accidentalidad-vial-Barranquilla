@@ -19,7 +19,7 @@ Responsable del ecosistema de almacenamiento y extracción ETL.
 * Estructuración del mapeo objeto-relacional (ORM) usando SQLAlchemy.
 * Desarrollo y auditoría de todas las consultas CRUD base.
 
-### Capas de Controlador y Vista Intefaz (Juan Medina)
+### Capas de Controlador, Vista e Interfaz (Juan Medina)
 Responsable del despliegue web, endpoints del servidor y reactividad del cliente.
 * Configuración de la plataforma principal en FastAPI.
 * Enrutado de peticiones y respuestas mediante esquemas JSON (Pydantic).
