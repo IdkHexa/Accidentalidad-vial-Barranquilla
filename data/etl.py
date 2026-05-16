@@ -8,10 +8,13 @@ SQLite.  El proceso se divide en tres etapas:
    los registros en lotes paginados.
 2. **Transformacion**: Cada fila JSON se valida contra el esquema de
    Pydantic (``AccidenteDTO``) y se enriquecen las coordenadas
-   faltantes mediante geocodificacion.
+   faltantes mediante geocodificacion.  Los errores de validacion
+   se contabilizan por campo y se reportan al final del proceso.
 3. **Carga**: Los objetos ya limpios se persisten en ``accidentalidad.db``
    a traves del repositorio DAO.
 """
+
+from collections import Counter
 
 from pydantic import ValidationError
 
@@ -29,6 +32,10 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
     se hace con ``httpx.AsyncClient``, lo que permite que el programa
     no se bloquee mientras espera la respuesta de internet.
 
+    Los registros que no superan la validacion de Pydantic no
+    interrumpen el proceso: se descartan, se contabiliza el campo
+    que fallo y se reporta el total al finalizar.
+
     Parametros:
     - ``limite_registros``: cantidad maxima de filas a descargar.
     - ``guardar_en_bd``: si es ``True``, al finalizar la transformacion
@@ -42,6 +49,7 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
     geocoder = GeoCoder()
     validos = []
     geocodificados_nuevos = 0
+    errores_por_campo = Counter()
 
     try:
         print("Paso 1: Extrayendo datos de la API...")
@@ -50,6 +58,7 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
         print(
             f"Paso 2: Transformando y geocodificando {len(datos_crudos)} registros..."
         )
+
         for fila in datos_crudos:
             try:
                 # Convierte el diccionario crudo en un ``AccidenteDTO``.
@@ -70,11 +79,11 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
                             geocodificados_nuevos += 1
 
                 validos.append(obj)
-            except ValidationError:
-                # Si una fila no cumple el esquema (tipos erroneos, campos
-                # obligatorios faltantes), se salta silenciosamente para no
-                # interrumpir la carga del resto del lote.
-                continue
+
+            except ValidationError as e:
+                for error in e.errors():
+                    campo = ".".join(str(p) for p in error["loc"])
+                    errores_por_campo[campo] += 1
 
     except Exception as e:
         print(f"Error fatal durante el proceso ETL: {e}")
@@ -105,5 +114,11 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
     print("--- ETL finalizado ---")
     print(f"Registros totales listos: {len(validos)}")
     print(f"Coordenadas obtenidas mediante Google/cache: {geocodificados_nuevos}")
+
+    total_errores = sum(errores_por_campo.values())
+    if total_errores > 0:
+        print("Registros descartados por validación: ")
+        for campo, cantidad in errores_por_campo.most_common():
+            print(f" - {campo}: {cantidad} errores")
 
     return validos
