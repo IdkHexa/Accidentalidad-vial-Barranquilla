@@ -1,6 +1,7 @@
 """Configuracion del motor de base de datos y modelo ORM.
 
-Este modulo centraliza la conexion a SQLite y define el mapeo
+Este modulo centraliza la conexion a la base de datos (SQLite
+o PostgreSQL segun configuracion) y define el mapeo
 objeto-relacional (ORM) que permite tratar los registros de accidentes
 como objetos de Python en lugar de escribir SQL directamente.
 
@@ -12,8 +13,9 @@ del programa de los detalles del motor de base de datos.
 from sqlalchemy import Column, Float, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DB_PATH = "accidentalidad.db"
-engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
+from config import DATABASE_URL
+
+engine = create_engine(DATABASE_URL, echo=False)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -36,7 +38,7 @@ class AccidenteDB(Base):
     __tablename__ = "accidentes"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    fecha_accidente = Column(String(20), nullable=False)
+    fecha_accidente = Column(String(50), nullable=False)
     hora_accidente = Column(String(20), nullable=False)
     gravedad_accidente = Column(String(50), nullable=False)
     clase_accidente = Column(String(50), nullable=False)
@@ -56,7 +58,7 @@ class AccidenteDB(Base):
 
         Este metodo es el puente entre la capa de validacion y la de
         persistencia: toma el objeto limpio que produjo el ETL y lo
-        transforma en un registro listo para guardar en SQLite.
+        transforma en un registro listo para persistir en la base de datos.
 
         Parametros:
         - ``dto``: instancia de ``AccidenteDTO`` con los datos validados.
@@ -89,7 +91,8 @@ def init_db():
 
     Ejecuta ``Base.metadata.create_all()``, que inspecciona todas las
     clases que heredan de ``Base`` (en este caso ``AccidenteDB``) y
-    crea sus tablas en SQLite si aun no existen.  Es seguro llamarla
+    crea sus tablas si aun no existen, sin importar el motor
+    (SQLite o PostgreSQL).  Es seguro llamarla
     multiples veces porque SQLAlchemy verifica ``IF NOT EXISTS``
     internamente.
     """

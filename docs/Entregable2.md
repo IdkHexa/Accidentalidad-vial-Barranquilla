@@ -19,19 +19,31 @@ El diseño se basa en dos pilares:
 
 ## 2. Configuración del Motor de Base de Datos
 
-### Motor SQLite y Fábrica de Sesiones (`data/database.py`)
+### Motor Dual: SQLite o PostgreSQL (`data/database.py`)
 
-Se eligió **SQLite** como motor de base de datos porque:
-- No requiere instalar ni configurar un servidor externo.
-- El archivo `accidentalidad.db` es autocontenido y portátil.
-- Es suficiente para el volumen de datos del proyecto (miles de registros,
-  no millones).
+El proyecto soporta dos motores de base de datos intercambiables gracias a
+la abstracción de SQLAlchemy:
+
+| Motor | Cuándo usarlo |
+|-------|--------------|
+| **SQLite** | Desarrollo rápido, sin dependencias externas, portátil |
+| **PostgreSQL** | Entorno de producción o cuando se requiere un gestor servido |
+
+La selección se define en `config.py` mediante la variable de entorno
+`DATABASE_URL`:
+
+```python
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///accidentalidad.db")
+```
+
+Si `DATABASE_URL` está definida en `.env`, se usa ese motor; si no, cae
+automáticamente a SQLite sin necesidad de cambiar código.
 
 La configuración sigue el patrón estándar de SQLAlchemy:
 
 | Componente | Propósito |
 |---|---|
-| `engine` | Conexión al archivo SQLite (`sqlite:///accidentalidad.db`) |
+| `engine` | Conexión a la base de datos (`DATABASE_URL` desde configuración) |
 | `SessionLocal` | Fábrica de sesiones: cada operación abre y cierra su propia sesión |
 | `Base` | Clase declarativa base de la que heredan todos los modelos ORM |
 | `init_db()` | Crea las tablas si no existen (idempotente, seguro de llamar múltiples veces) |
@@ -51,9 +63,17 @@ cada registro de forma única.
 
 El método de clase `desde_dto(dto)` convierte una instancia de `AccidenteDTO`
 (objeto de memoria validado por Pydantic) en una instancia de `AccidenteDB`
-(lista para insertar en SQLite). Este método es el único punto del sistema
-donde se tocan ambos mundos, lo que facilita el mantenimiento: si cambia la
-estructura del DTO, solo hay que ajustar este método.
+(lista para insertar en la base de datos). Este método es el único punto del
+sistema donde se tocan ambos mundos, lo que facilita el mantenimiento: si
+cambia la estructura del DTO, solo hay que ajustar este método.
+
+### Nota sobre tamaños de columna
+
+Al migrar de SQLite a PostgreSQL se descubrió que `String(20)` para
+`fecha_accidente` era insuficiente: el formato ISO completo
+(`2018-01-01T00:00:00.000`) ocupa 23 caracteres. En SQLite no hay problema
+porque ignora el límite, pero PostgreSQL lo enforce. Se actualizó a
+`String(50)` para evitar truncamiento.
 
 ## 3. Repositorio DAO (`data/storage.py`)
 
@@ -64,8 +84,8 @@ una única clase: `AccidenteRepository`. Las ventajas de este enfoque son:
 
 - **Desacoplamiento**: El ETL y los futuros controladores nunca importan
   `session` ni `AccidenteDB` directamente; solo hablan con el repositorio.
-- **Migrabilidad**: Si en el futuro se cambia SQLite por PostgreSQL, solo
-  hay que modificar la configuración del engine; el repositorio permanece
+- **Migrabilidad**: El cambio de SQLite a PostgreSQL (o viceversa) solo
+  requiere modificar `DATABASE_URL` en `.env`; el repositorio permanece
   igual porque usa la API genérica de SQLAlchemy.
 - **Testeabilidad**: Se puede probar el repositorio con una base de datos
   en memoria sin tocar el archivo real.
@@ -83,7 +103,78 @@ una única clase: `AccidenteRepository`. Las ventajas de este enfoque son:
 Los filtros por gravedad y año están diseñados para alimentar los futuros
 gráficos interactivos de la interfaz web (Apache ECharts).
 
-## 4. Integración con el Pipeline ETL
+## 4. Migración a PostgreSQL con Docker
+
+Como mejora posterior a la implementación inicial, se migró la base de datos
+de SQLite a PostgreSQL, manteniendo la capacidad de volver a SQLite mediante
+configuración.
+
+### Infraestructura con Docker Compose
+
+Se creó `docker-compose.yml` en la raíz del proyecto para levantar un
+contenedor de PostgreSQL 16 Alpine:
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRE_USER}
+      POSTGRES_PASSWORD: ${POSTGRE_PASSWORD}
+      POSTGRES_DB: ${POSTGRE_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+```
+
+Las credenciales se definen en `.env` y son leídas automáticamente por Docker
+Compose. El volumen `pgdata` garantiza que los datos persistan entre reinicios
+del contenedor.
+
+### Conexión desde la Aplicación
+
+`config.py` expone `DATABASE_URL` que se construye desde la variable de entorno
+del mismo nombre. Si no está definida, cae a SQLite automáticamente:
+
+```python
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///accidentalidad.db")
+```
+
+Ejemplo de configuración en `.env` para usar PostgreSQL:
+
+```env
+DATABASE_URL=postgresql+psycopg2://usuario:password@127.0.0.1:5432/nombre_db
+```
+
+### Driver PostgreSQL
+
+Se agregó `psycopg2-binary` a `requirements.txt` como driver de conexión entre
+SQLAlchemy y PostgreSQL.
+
+### Nuevo Flujo de Trabajo
+
+```bash
+# 1. Iniciar PostgreSQL
+docker compose up -d
+
+# 2. Ejecutar el ETL (se conecta automáticamente a PostgreSQL)
+python main.py
+
+# 3. Para detener PostgreSQL
+docker compose down
+```
+
+### Cómo Volver a SQLite
+
+Simplemente comentar o eliminar `DATABASE_URL` del archivo `.env`. La aplicación
+cae automáticamente a `sqlite:///accidentalidad.db`.
+
+## 5. Integración con el Pipeline ETL
 
 El archivo `data/etl.py` fue modificado para incorporar un tercer paso al
 final del proceso:
@@ -91,7 +182,7 @@ final del proceso:
 ```
 Paso 1: Extracción (API Socrata)
   → Paso 2: Transformación + Geocodificación (Pydantic + Google Maps)
-    → Paso 3: Carga en Base de Datos (Repository DAO)  ← NUEVO
+    → Paso 3: Carga en Base de Datos (Repository DAO)
 ```
 
 La función `ejecutar_etl()` ahora recibe un parámetro `guardar_en_bd=True`.
@@ -100,14 +191,31 @@ SQLAlchemy, se instancia el repositorio y se insertan todos los registros
 válidos. La sesión se cierra en un bloque `finally` para garantizar que
 los recursos se liberen incluso si ocurre un error.
 
-### Manejo de Errores
+### Manejo de Errores en Inserción
 
 Si la inserción falla, se ejecuta `session.rollback()` para dejar la base
 de datos en un estado consistente (sin datos a medio insertar). El error
 se imprime en consola pero no interrumpe el flujo: los registros procesados
 se siguen retornando al llamador.
 
-## 5. Degradación Graceful del Geocodificador
+### Trazabilidad de Errores de Validación
+
+Se reemplazó el `continue` silencioso del bloque `except ValidationError`
+por un sistema de contadores que registra qué campos causaron el rechazo
+de cada registro. Al finalizar el ETL, si hubo descartes, se muestra un
+resumen agrupado por campo:
+
+```
+Registros descartados por validación:
+ - cant_muertos_en_sitio_accidente: 3 errores
+ - fecha_accidente: 2 errores
+```
+
+Esto permite rastrear problemas de calidad del dataset sin interrumpir
+el proceso de carga. Los errores de todos los campos de un mismo registro
+se contabilizan de forma independiente.
+
+## 6. Degradación Graceful del Geocodificador
 
 Como mejora de robustez, se modificó `data/geocoding.py` para que no falle
 si la variable de entorno `GOOGLE_MAPS_KEY` no está configurada. En lugar
@@ -117,7 +225,7 @@ retorna `None` inmediatamente si no hay cliente disponible. El ETL ya
 manejaba coordenadas nulas, por lo que esta mejora no requirió cambios
 adicionales en el pipeline.
 
-## 6. Pruebas del Repositorio
+## 7. Pruebas del Repositorio
 
 Se creó el archivo `tests/test_storage.py` con 5 pruebas que validan:
 
@@ -128,19 +236,22 @@ Se creó el archivo `tests/test_storage.py` con 5 pruebas que validan:
 5. **Orden descendente**: Verificar que `obtener_todos()` retorna los registros del más reciente al más antiguo.
 
 Las pruebas usan una base de datos SQLite en memoria (`:memory:`) para no
-contaminar el archivo `accidentalidad.db` real. Cada test crea y destruye
-su propio entorno en `setUp()` y `tearDown()`.
+contaminar los datos reales. Cada test crea y destruye su propio entorno
+en `setUp()` y `tearDown()`.
 
-## 7. Resultados
+## 8. Resultados
 
 En la ejecución de prueba, el sistema procesó **500 registros** desde la
-API, los transformó, geocodificó y almacenó correctamente en SQLite. Las
-5 pruebas del repositorio pasaron sin errores, validando que las operaciones
-CRUD funcionan según lo esperado.
+API, los transformó, geocodificó y almacenó correctamente tanto en SQLite
+como en PostgreSQL (según configuración de `DATABASE_URL`). Las 5 pruebas
+del repositorio pasaron sin errores, validando que las operaciones CRUD
+funcionan independientemente del motor subyacente.
 
 | Métrica | Resultado |
 |---|---|
 | Registros extraídos | 500 |
 | Registros insertados en BD | 500 |
 | Coordenadas geocodificadas | 500 (100%) |
+| Registros descartados | 0 |
 | Tests del repositorio | 5/5 OK |
+| Tests totales (12) | 12/12 OK |
