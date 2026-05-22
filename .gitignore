@@ -19,3 +19,6 @@ logs/
 
 # Notebooks y sus archivos temporales
 .ipynb_checkpoints/
+
+# Registro de habilidades generado (SDD)
+.atl/

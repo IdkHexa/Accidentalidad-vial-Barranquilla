@@ -10,8 +10,11 @@ from dotenv import load_dotenv
 # Carga las variables del archivo .env.
 load_dotenv()
 
+# Identificador del dataset en el portal de datos abiertos de Colombia.
+DATASET_ID = "yb9r-2dsi"
+
 # URL del dataset consultado por la aplicacion.
-API_URL = "https://www.datos.gov.co/resource/yb9r-2dsi.json"
+API_URL = f"https://www.datos.gov.co/resource/{DATASET_ID}.json"
 
 # Llave usada por el modulo de geocodificacion.
 GOOGLE_MAPS_KEY = os.getenv("GOOGLE_MAPS_KEY")

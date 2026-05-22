@@ -28,5 +28,19 @@ A diferencia de métodos manuales, la calidad del sistema se garantiza mediante 
 *   **Pruebas de Parser**: Verificación de casos de borde, intersecciones y limpieza de ruido.
 *   **Pruebas de Geocoding**: Validación de la generación de queries y el comportamiento del caché.
 
-## 5. Resultados de Performance
+## 5. Dificultades Encontradas
+
+### 5.1. Autocompletado de VS Code revierte correcciones manuales
+**Problema:** El autocompletado de VS Code y GitHub Copilot revierte silenciosamente ediciones manuales al guardar el archivo, provocando que el código corregido se pierda y haya que re-escribirlo varias veces.
+**Solución:** Adoptar la práctica de verificar cada archivo con re-lectura después de guardarlo, y usar el agente de revisión para validar cambios.
+
+### 5.2. Pydantic: alias de campos vs. nombres de atributo
+**Problema:** `AccidenteDTO` usa `Field(alias="fecha_accidente")` con nombres en snake_case. Al crear instancias del DTO desde Python, pasar `FECHA_ACCIDENTE` (mayúsculas) como clave falla porque Pydantic espera el alias (`fecha_accidente`). Esto solo afecta a los tests; en producción la API ya devuelve snake_case.
+**Solución:** Documentar en AGENTS.md que los tests deben usar los nombres de alias, no los nombres de los atributos del DTO.
+
+### 5.3. String(20) insuficiente para fechas ISO en PostgreSQL
+**Problema:** El formato de fecha devuelto por la API es `2018-01-01T00:00:00.000`, que ocupa 23 caracteres. En SQLite no hay problema porque ignora el límite de tamaño de `String`, pero PostgreSQL lo enfuerza estrictamente, causando truncamiento en la migración.
+**Solución:** Aumentar el tamaño de la columna a `String(50)` para acomodar el formato ISO completo.
+
+## 6. Resultados de Performance
 En pruebas de carga, el sistema procesó **500 registros en 110 segundos**, logrando una efectividad del **100% en la ubicación geográfica** de los incidentes.

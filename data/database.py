@@ -1,7 +1,7 @@
 """Configuracion del motor de base de datos y modelo ORM.
 
-Este modulo centraliza la conexion a la base de datos (SQLite
-o PostgreSQL segun configuracion) y define el mapeo
+Este modulo centraliza la conexion a la base de datos (PostgreSQL
+en este caso) y define el mapeo
 objeto-relacional (ORM) que permite tratar los registros de accidentes
 como objetos de Python en lugar de escribir SQL directamente.
 
@@ -9,13 +9,16 @@ SQLAlchemy se encarga de traducir automaticamente las operaciones
 que hagamos sobre objetos a instrucciones SQL, aislando al resto
 del programa de los detalles del motor de base de datos.
 """
+import dotenv
+import os
 
 from sqlalchemy import Column, Float, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from config import DATABASE_URL
 
-engine = create_engine(DATABASE_URL, echo=False)
+dotenv.load_dotenv()
+
+engine = create_engine(os.getenv("DATABASE_URL"), echo=False)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -31,7 +34,7 @@ class AccidenteDB(Base):
     entre ambos mundos (objeto de memoria y registro persistente).
 
     La columna ``id`` es una clave primaria autoincremental generada
-    por SQLite; no viene del dataset original sino que la creamos
+    por la base de datos; no viene del dataset original sino que la creamos
     nosotros para poder identificar univocamente cada registro.
     """
 
@@ -91,9 +94,8 @@ def init_db():
 
     Ejecuta ``Base.metadata.create_all()``, que inspecciona todas las
     clases que heredan de ``Base`` (en este caso ``AccidenteDB``) y
-    crea sus tablas si aun no existen, sin importar el motor
-    (SQLite o PostgreSQL).  Es seguro llamarla
-    multiples veces porque SQLAlchemy verifica ``IF NOT EXISTS``
-    internamente.
+    crea sus tablas si aun no existen, sin importar el motor.
+    Es seguro llamarla multiples veces porque SQLAlchemy verifica
+    ``IF NOT EXISTS`` internamente.
     """
     Base.metadata.create_all(bind=engine)

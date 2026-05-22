@@ -2,7 +2,7 @@
 
 Este modulo orquesta el flujo completo de datos desde que salen de
 la API de Socrata hasta que quedan almacenados en la base de datos
-SQLite.  El proceso se divide en tres etapas:
+PostgreSQL.  El proceso se divide en tres etapas:
 
 1. **Extraccion**: Se conecta al portal de datos abiertos y descarga
    los registros en lotes paginados.
@@ -10,7 +10,7 @@ SQLite.  El proceso se divide en tres etapas:
    Pydantic (``AccidenteDTO``) y se enriquecen las coordenadas
    faltantes mediante geocodificacion.  Los errores de validacion
    se contabilizan por campo y se reportan al final del proceso.
-3. **Carga**: Los objetos ya limpios se persisten en ``accidentalidad.db``
+3. **Carga**: Los objetos ya limpios se persisten en la base de datos
    a traves del repositorio DAO.
 """
 
@@ -18,6 +18,7 @@ from collections import Counter
 
 from pydantic import ValidationError
 
+from config import DATASET_ID
 from api.api_client import ApiClient
 from data.database import SessionLocal
 from data.geocoding import GeoCoder
@@ -39,7 +40,7 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
     Parametros:
     - ``limite_registros``: cantidad maxima de filas a descargar.
     - ``guardar_en_bd``: si es ``True``, al finalizar la transformacion
-      los datos se persisten en SQLite mediante ``AccidenteRepository``.
+      los datos se persisten en la base de datos mediante ``AccidenteRepository``.
 
     Retorna la lista de objetos ``AccidenteDTO`` procesados.
     """
@@ -53,7 +54,7 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
 
     try:
         print("Paso 1: Extrayendo datos de la API...")
-        datos_crudos = await cliente.get_dataset_limit("yb9r-2dsi", limite_registros)
+        datos_crudos = await cliente.get_dataset_limit(DATASET_ID, limite_registros)
 
         print(
             f"Paso 2: Transformando y geocodificando {len(datos_crudos)} registros..."
@@ -88,6 +89,8 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
     except Exception as e:
         print(f"Error fatal durante el proceso ETL: {e}")
     finally:
+        # Persiste las coordenadas cacheadas en esta ejecucion.
+        geocoder.guardar()
         # Libera los recursos del cliente HTTP (cierra conexiones
         # abiertas para evitar fugas de memoria en bucles largos).
         await cliente.close()

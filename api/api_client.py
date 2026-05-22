@@ -5,7 +5,7 @@ traer los datos en lotes controlados.
 """
 
 import httpx
-from config import API_URL
+from config import API_URL, DATASET_ID
 
 
 class ApiClient:
@@ -23,7 +23,7 @@ class ApiClient:
         - `dataset_id`: identificador del recurso en Socrata.
         - `limit`: numero maximo de filas a recuperar.
         """
-        url_final = API_URL.replace("yb9r-2dsi", dataset_id)
+        url_final = API_URL if dataset_id == DATASET_ID else API_URL.replace(DATASET_ID, dataset_id)
 
         # `offset` indica desde que posicion inicia cada pagina.
         offset = 0

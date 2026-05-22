@@ -32,6 +32,7 @@ class GeoCoder:
         """
         self.cache_file = cache_file
         self.cache = self._cargar_cache()
+        self._pendientes = 0
         if GOOGLE_MAPS_KEY:
             self.gmaps = googlemaps.Client(key=GOOGLE_MAPS_KEY)
         else:
@@ -75,10 +76,23 @@ class GeoCoder:
                 coords = (location["lat"], location["lng"])
 
                 self.cache[query] = coords
-                self._guardar_cache()
+                self._pendientes += 1
+                if self._pendientes >= 500:
+                    self._guardar_cache()
+                    self._pendientes = 0
                 return coords
 
         except Exception as e:
             print(f"Error en Google Maps para '{query}': {e}")
 
         return None
+
+    def guardar(self):
+        """Persiste las coordenadas pendientes en el archivo de cache.
+
+        Se llama al finalizar una tanda de geocodificaciones para
+        asegurar que ninguna coordenada quede solo en memoria.
+        """
+        if self._pendientes > 0:
+            self._guardar_cache()
+            self._pendientes = 0

@@ -227,31 +227,64 @@ adicionales en el pipeline.
 
 ## 7. Pruebas del Repositorio
 
-Se creó el archivo `tests/test_storage.py` con 5 pruebas que validan:
+Se creó la suite completa de tests con **44 pruebas** en 9 archivos,
+cubriendo el 100% de los módulos 1 al 4:
 
-1. **Inserción y conteo**: Insertar un registro y verificar que `contar()` devuelva 1.
-2. **Inserción por lotes**: Insertar 3 registros y verificar el conteo total.
-3. **Filtro por año**: Insertar registros de distintos años y verificar que `obtener_por_año()` filtre correctamente.
-4. **Filtro por gravedad**: Insertar registros con distintas gravedades y verificar el filtro.
-5. **Orden descendente**: Verificar que `obtener_todos()` retorna los registros del más reciente al más antiguo.
+| Archivo de test | Módulo cubierto | Pruebas |
+|---|---|---|
+| `test_parser.py` | Parser de direcciones | 4 |
+| `test_geocoding.py` | Geocodificador y caché | 2 |
+| `test_entidades.py` | AccidenteDTO y validadores | 12 |
+| `test_api_client.py` | Cliente HTTP y paginación | 6 |
+| `test_database.py` | Mapeo DTO → ORM | 4 |
+| `test_storage.py` | Repositorio DAO y CRUD | 6 |
+| `test_etl.py` | Pipeline ETL | 5 |
+| `test_config.py` | Configuración y fallbacks | 3 |
+| `test_seed_geocache.py` | Precarga de coordenadas | 2 |
 
 Las pruebas usan una base de datos SQLite en memoria (`:memory:`) para no
 contaminar los datos reales. Cada test crea y destruye su propio entorno
 en `setUp()` y `tearDown()`.
 
-## 8. Resultados
+## 8. Dificultades Encontradas
+
+### 8.1. Conflictos de puertos con WSL y Docker
+**Problema:** En la máquina de desarrollo, el proceso `wslrelay.exe` ocupaba los puertos 5432-5434 por tener una instancia de PostgreSQL dentro de WSL. Además, el `docker-compose.yml` exponía el puerto 5432 pero el `.env` apuntaba a 5452, creando una inconsistencia silenciosa que solo se detectaba al ejecutar `main.py`.
+**Solución:** Unificar la configuración al puerto 8448 en ambos archivos (`.env` y `docker-compose.yml`), y corregir los nombres de las variables de entorno de `POSTGRE_*` a `POSTGRES_*` (agregando la S faltante).
+
+### 8.2. API de Socrata con errores 500 intermitentes
+**Problema:** El endpoint `$select=count(*)` de la API de datos.gov.co devuelve errores HTTP 500 de forma intermitente. Esto afecta al script `seed_geocache.py` que depende de conocer el total exacto de registros.
+**Solución:** Implementar `seed_geocache.py` con modo `--dry-run` que permite ejecutar primero una prueba sin geocodificar. Si la API falla, se puede usar el total conocido del dry-run como fallback.
+
+### 8.3. SQLAlchemy ResourceWarning en tests
+**Problema:** Al usar SQLite en memoria (`:memory:`) en los tests, SQLAlchemy lanza `ResourceWarning` sobre conexiones no cerradas al finalizar la ejecución.
+**Solución:** Llamar a `engine.dispose()` en el `tearDown()` de cada test para liberar explícitamente las conexiones.
+
+### 8.4. Degradación graceful del Geocodificador
+**Problema:** Si la variable de entorno `GOOGLE_MAPS_KEY` no está configurada en `.env`, el geocodificador lanzaba una excepción al intentar crear `googlemaps.Client(key=None)`.
+**Solución:** Asignar `self.gmaps = None` y hacer que `obtener_coordenadas()` retorne `None` inmediatamente sin crash. El ETL ya manejaba coordenadas nulas, por lo que esta mejora no requirió cambios adicionales en el pipeline.
+
+### 8.5. Escalabilidad del geocaché a 28k registros
+**Problema:** Procesar 28,328 registros con geocodificación en vivo saturaría la cuota gratuita de Google Maps (40,000 requests/mes) y tomaría horas por la latencia de red.
+**Solución:** Crear el script `seed_geocache.py` que separa la precarga del caché en dos fases: (1) descargar todas las direcciones y detectar las no cacheadas, (2) geocodificar solo las nuevas con control de progreso. Después de la precarga, el ETL corre completamente local sin llamar a Google Maps.
+
+### 8.6. Saturación de I/O en escritura masiva del geocaché
+**Problema:** El método `_guardar_cache()` escribía el archivo JSON completo a disco por cada coordenada nueva. Con 28k direcciones, esto generaba 28k escrituras completas, saturando el I/O y provocando `[Errno 22] Invalid argument` en Windows al alcanzar ~7,000 registros. Peor aún, la excepción ocurría dentro del `try` de `obtener_coordenadas()`, por lo que la coordenada obtenida de Google Maps (ya en `self.cache` en RAM) se perdía al no ejecutarse el `return`.
+**Solución:** Implementar guardado por lotes: el caché se persiste a disco solo cada 500 coordenadas nuevas. Se agregó un contador interno `_pendientes` y un método público `guardar()` que los orquestadores (`seed_geocache.py` y `etl.py`) llaman en sus bloques `finally` para garantizar el flush final.
+
+## 9. Resultados
 
 En la ejecución de prueba, el sistema procesó **500 registros** desde la
 API, los transformó, geocodificó y almacenó correctamente tanto en SQLite
-como en PostgreSQL (según configuración de `DATABASE_URL`). Las 5 pruebas
-del repositorio pasaron sin errores, validando que las operaciones CRUD
-funcionan independientemente del motor subyacente.
+como en PostgreSQL. Las 9 suites de pruebas (44 tests) pasaron sin errores,
+validando que todas las operaciones funcionan independientemente del motor subyacente.
 
 | Métrica | Resultado |
 |---|---|
-| Registros extraídos | 500 |
-| Registros insertados en BD | 500 |
-| Coordenadas geocodificadas | 500 (100%) |
-| Registros descartados | 0 |
-| Tests del repositorio | 5/5 OK |
-| Tests totales (12) | 12/12 OK |
+| Registros disponibles en API | 28,328 |
+| Registros insertados en BD (prueba) | 1,500 |
+| Direcciones únicas cacheadas | 1,707 |
+| Nuevas por geocodificar | 26,621 |
+| Registros descartados por validación | 0 |
+| Tests totales | 44/44 OK |
+| Archivos de test | 9/9 OK |
