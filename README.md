@@ -21,7 +21,6 @@ tránsito en Barranquilla desde el portal de Datos Abiertos de Colombia.
   - [`docs/Entregable2.md`](docs/Entregable2.md) — Módulos 3 y 4: Persistencia y repositorio DAO.
   - [`docs/ENTREGABLES.md`](docs/ENTREGABLES.md) — Plan general de entregables y delimitación técnica.
   - [`docs/METODOLOGIA.md`](docs/METODOLOGIA.md) — Roles del equipo y acuerdos de colaboración.
-  - [`docs/Guion_Sustentacion_Modulos_1_4.md`](docs/Guion_Sustentacion_Modulos_1_4.md) — Guión de presentación para sustentación.
 - `config.py` — Configuración global (URL de la API, llave de Google Maps y conexión a base de datos).
 - `docker-compose.yml` — Orquestación de PostgreSQL en contenedor Docker (puerto 8448).
 - `main.py` — Punto de entrada que ejecuta el pipeline completo.
