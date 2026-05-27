@@ -28,7 +28,7 @@ async def main():
     init_db()
     print("Base de datos inicializada.\n")
 
-    cantidad = 500
+    cantidad = 10**6 # Numero grande para asegurar que se procesen todos los registros disponibles.
     resultados = await ejecutar_etl(cantidad, guardar_en_bd=True)
 
     print("\n--- Vista de datos extraidos ---")

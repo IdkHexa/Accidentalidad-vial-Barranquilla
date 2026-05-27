@@ -44,7 +44,7 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
 
     Retorna la lista de objetos ``AccidenteDTO`` procesados.
     """
-    print(f"--- Iniciando ETL para {limite_registros} registros ---")
+    print(f"--- Iniciando ETL para los registros disponibles ---")
 
     cliente = ApiClient()
     geocoder = GeoCoder()

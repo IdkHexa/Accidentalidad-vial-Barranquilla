@@ -24,12 +24,17 @@ async def obtener_total(cliente):
     Usa ``$select=count(*)`` para traer solo el número, no los datos,
     y así evitar descargar 28k registros solo para saber el total.
     """
-    resp = await cliente.client.get(
-        API_URL,
-        params={"$select": "count(*)"},
-    )
-    resp.raise_for_status()
-    return int(resp.json()[0]["count"])
+    try:
+        resp = await cliente.client.get(
+            API_URL,
+            params={"$select": "count(*)"},
+        )
+        resp.raise_for_status()
+        return int(resp.json()[0]["count"])
+    except Exception:
+        print("  ADVERTENCIA: No se pudo consultar el total a la API.")
+        print("  Usando valor conocido del dry-run anterior: 28328")
+        return 28328
 
 
 async def precargar_geocache(dry_run=False):
@@ -82,14 +87,15 @@ async def precargar_geocache(dry_run=False):
                 else:
                     nuevas += 1
             else:
-                coords = geocoder.obtener_coordenadas(direccion)
-                if coords is None:
-                    if str(direccion) in geocoder.cache:
-                        cacheadas += 1
-                    else:
-                        fallidas += 1
+                key = str(direccion)
+                if key in geocoder.cache:
+                    cacheadas += 1
                 else:
-                    nuevas += 1
+                    coords = geocoder.obtener_coordenadas(direccion)
+                    if coords is None:
+                        fallidas += 1
+                    else:
+                        nuevas += 1
 
             if (i + 1) % 500 == 0:
                 pct = (i + 1) / len(datos) * 100
