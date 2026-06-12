@@ -39,11 +39,26 @@ MVC layered project. Two owners, strict boundary:
 
 | Layer | Owner | Modules | Status |
 |-------|-------|---------|--------|
-| `api/`, `models/`, `data/` | Jofier | 1–4 | Done |
+| `api/`, `models/`, `data/`, `analytics/` | Jofier | 1–4 + Analytics | Done |
 | `controllers/`, `views/` | Juan | 5–8 | Placeholders |
 
 - `main.py` — entry point, calls `init_db()` then `ejecutar_etl()`
 - `config.py` — loads `.env`, exports `API_URL` and `GOOGLE_MAPS_KEY`
+
+## Analytics Module
+
+Clustering geoespacial con DBSCAN para identificar zonas críticas.
+
+- `analytics/clustering.py` — Functions: `ejecutar_clustering_dbscan()` (pure), `obtener_clusters_pipeline()` (orchestrator), `obtener_clusters()` (legacy wrapper)
+- `data/storage.py` — `obtener_para_clustering()` returns DataFrame for analytics
+- Tests: `tests/test_clustering.py` — 18 unit tests with synthetic data
+
+Key design decisions:
+- **Pure function**: `ejecutar_clustering_dbscan()` never touches the database
+- **Severity weighting**: `sample_weight = cantidad_accidentes + 1.5*heridos + 3.0*muertos`
+- **Bounding box**: Filters coordinates outside Barranquilla (10.90–11.05, -74.90–-74.75)
+- **Explicit conversion**: `kilometros_a_radianes()` eliminates magic numbers
+- **Optimized DBSCAN**: `algorithm="ball_tree"`, `n_jobs=-1`
 
 ## Environment
 
@@ -90,8 +105,10 @@ Never write `A_O_ACCIDENTE`, `SITIO_ACCIDENTE_EXACTO`, or `CANTIDAD_ACCIDENTE` �
 - Run all: `python -m unittest discover tests/`
 - Run one file: `python -m unittest tests.test_parser`
 - Run storage tests: `python -m unittest tests.test_storage`
+- Run clustering tests: `python -m unittest tests.test_clustering`
 - Tests use a separate geocache file (`tests/test_geocache.json`) to avoid polluting real data
 - Storage tests use an in-memory SQLite database (`:memory:`) — never touch `accidentalidad.db`
+- Clustering tests use synthetic DataFrames — no database dependency
 
 ## Known IDE hazard
 

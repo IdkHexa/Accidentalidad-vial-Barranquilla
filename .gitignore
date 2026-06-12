@@ -22,3 +22,6 @@ logs/
 
 # Registro de habilidades generado (SDD)
 .atl/
+
+# Archivos scratch (no versionar)
+scratch/
