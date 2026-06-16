@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from data.database import SessionLocal, AccidenteDB, init_db
 from data.storage import AccidenteRepository
+from analytics.clustering import obtener_clusters_pipeline
 
 app = FastAPI(title="Accidentalidad Vial Barranquilla")
 
@@ -220,6 +221,68 @@ async def listar_accidentes(limit: int = 50, gravedad: str = None, año: int = N
                  "heridos": r.cant_heridos_en_sitio_accidente,
                  "muertos": r.cant_muertos_en_sitio_accidente,
                  "lat": r.latitud, "lng": r.longitud} for r in rows]
+    finally:
+        db.close()
+
+
+@app.put("/api/accidentes/{accidente_id}")
+async def actualizar_accidente(accidente_id: int, request: Request):
+    db = _session()
+    try:
+        accidente = db.query(AccidenteDB).filter(AccidenteDB.id == accidente_id).first()
+        if not accidente:
+            raise HTTPException(status_code=404, detail="Accidente no encontrado")
+        data = await request.json()
+        campos = [
+            "fecha_accidente", "hora_accidente", "gravedad_accidente",
+            "clase_accidente", "a_o_accidente", "mes_accidente", "dia_accidente",
+            "sitio_exacto_accidente", "cant_heridos_en_sitio_accidente",
+            "cant_muertos_en_sitio_accidente", "cantidad_accidentes",
+            "latitud", "longitud",
+        ]
+        for campo in campos:
+            if campo in data:
+                setattr(accidente, campo, data[campo])
+        db.commit()
+        return {"ok": True, "id": accidente.id}
+    finally:
+        db.close()
+
+
+@app.delete("/api/accidentes/{accidente_id}")
+async def eliminar_accidente(accidente_id: int):
+    db = _session()
+    try:
+        accidente = db.query(AccidenteDB).filter(AccidenteDB.id == accidente_id).first()
+        if not accidente:
+            raise HTTPException(status_code=404, detail="Accidente no encontrado")
+        db.delete(accidente)
+        db.commit()
+        return {"ok": True, "id": accidente_id}
+    finally:
+        db.close()
+
+
+@app.get("/api/stats/clusters")
+async def stats_clusters(radio: float = 300.0, min_samples: int = 10):
+    db = _session()
+    try:
+        repo = AccidenteRepository(db)
+        df = obtener_clusters_pipeline(repo, radio_metros=radio, min_muestras=min_samples)
+        clusters_df = df[df["cluster"] >= 0]
+        resumen = []
+        for cid, grupo in clusters_df.groupby("cluster"):
+            resumen.append({
+                "cluster": int(cid),
+                "puntos": int(len(grupo)),
+                "lat_centro": float(grupo["latitud"].mean()),
+                "lng_centro": float(grupo["longitud"].mean()),
+                "muertos": int(grupo["cant_muertos_en_sitio_accidente"].sum()),
+                "heridos": int(grupo["cant_heridos_en_sitio_accidente"].sum()),
+            })
+        resumen.sort(key=lambda c: c["puntos"], reverse=True)
+        return {"clusters": resumen, "total_puntos_en_clusters": int(len(clusters_df)),
+                "total_ruido": int((df["cluster"] == -1).sum())}
     finally:
         db.close()
 
