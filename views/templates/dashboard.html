@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Accidentalidad Barranquilla{% endblock %}
+{% block page_title %}Dashboard de estadísticas{% endblock %}
+
+{% block content %}
+
+<!-- KPIs -->
+<div class="kpi-grid">
+  <div class="kpi fade-up" style="--kpi-accent:#00d4ff">
+    <div class="kpi-icon">📊</div>
+    <div class="kpi-label">Total registros</div>
+    <div class="kpi-value" id="kpi-total">—</div>
+    <div class="kpi-sub" id="kpi-rango">cargando…</div>
+  </div>
+  <div class="kpi fade-up delay-1" style="--kpi-accent:#ff4560">
+    <div class="kpi-icon">💀</div>
+    <div class="kpi-label">Muertos en sitio</div>
+    <div class="kpi-value" id="kpi-muertos">—</div>
+    <div class="kpi-sub">total acumulado</div>
+  </div>
+  <div class="kpi fade-up delay-2" style="--kpi-accent:#ffc700">
+    <div class="kpi-icon">🚑</div>
+    <div class="kpi-label">Heridos en sitio</div>
+    <div class="kpi-value" id="kpi-heridos">—</div>
+    <div class="kpi-sub">total acumulado</div>
+  </div>
+  <div class="kpi fade-up delay-3" style="--kpi-accent:#7c3aed">
+    <div class="kpi-icon">📍</div>
+    <div class="kpi-label">Ciudad</div>
+    <div class="kpi-value" style="font-size:18px;margin-top:4px">Barranquilla</div>
+    <div class="kpi-sub">Atlántico, Colombia</div>
+  </div>
+</div>
+
+<!-- Row 1: Línea anual + Gravedad -->
+<div class="chart-grid" style="margin-bottom:16px">
+  <div class="card fade-up delay-1">
+    <div class="card-title">Accidentes por año</div>
+    <div class="chart-box" id="chart-año"></div>
+  </div>
+  <div class="card fade-up delay-2">
+    <div class="card-title">Distribución por gravedad</div>
+    <div class="chart-box" id="chart-gravedad"></div>
+  </div>
+</div>
+
+<!-- Row 2: Mes + Día + Hora -->
+<div class="chart-grid three" style="margin-bottom:16px">
+  <div class="card fade-up delay-1">
+    <div class="card-title">Por mes del año</div>
+    <div class="chart-box" id="chart-mes"></div>
+  </div>
+  <div class="card fade-up delay-2">
+    <div class="card-title">Por día de la semana</div>
+    <div class="chart-box" id="chart-dia"></div>
+  </div>
+  <div class="card fade-up delay-3">
+    <div class="card-title">Por hora del día</div>
+    <div class="chart-box" id="chart-hora"></div>
+  </div>
+</div>
+
+<!-- Row 3: Clase + Tabla reciente -->
+<div class="chart-grid" style="margin-bottom:0">
+  <div class="card fade-up delay-1">
+    <div class="card-title">Clase de accidente (top 10)</div>
+    <div class="chart-box" id="chart-clase"></div>
+  </div>
+  <div class="card fade-up delay-2" style="overflow:hidden">
+    <div class="card-title">Últimos registros</div>
+    <div style="overflow-y:auto;max-height:260px">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Gravedad</th><th>Clase</th><th>Heridos</th><th>Muertos</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-recientes">
+          <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COLORS = {
+  line:    '#00d4ff',
+  bar:     '#00d4ff',
+  muertos: '#ff4560',
+  heridos: '#ffc700',
+  danos:   '#64748b',
+  series:  ['#00d4ff','#ff4560','#ffc700','#7c3aed','#10b981','#f97316'],
+};
+
+const ecOpts = (extra={}) => Object.assign({
+  backgroundColor: 'transparent',
+  textStyle: { fontFamily: "'Space Grotesk', sans-serif", color: '#64748b' },
+  grid: { left: 40, right: 16, top: 16, bottom: 40 },
+}, extra);
+
+function gravBadge(g='') {
+  const u = (g||'').toUpperCase();
+  if (u.includes('MUERTO'))  return `<span class="badge badge-fatal">${g}</span>`;
+  if (u.includes('HERIDO'))  return `<span class="badge badge-grave">${g}</span>`;
+  if (u.includes('DA'))      return `<span class="badge badge-solo">${g}</span>`;
+  return `<span class="badge badge-leve">${g || '—'}</span>`;
+}
+
+// ── KPIs ───────────────────────────────────────────────────────────────────
+async function loadKPIs() {
+  const d = await fetch('/api/stats/resumen').then(r=>r.json());
+  document.getElementById('kpi-total').textContent   = fmt(d.total);
+  document.getElementById('kpi-muertos').textContent = fmt(d.muertos);
+  document.getElementById('kpi-heridos').textContent = fmt(d.heridos);
+  document.getElementById('kpi-rango').textContent   =
+    d.año_inicio && d.año_fin ? `${d.año_inicio} → ${d.año_fin}` : 'sin datos de año';
+}
+
+// ── Por año ─────────────────────────────────────────────────────────────────
+async function chartAño() {
+  const data = await fetch('/api/stats/por_año').then(r=>r.json());
+  const c = echarts.init(document.getElementById('chart-año'));
+  c.setOption(ecOpts({
+    tooltip: { trigger:'axis' },
+    legend: { data:['Accidentes','Muertos','Heridos'], textStyle:{color:'#94a3b8'}, bottom:0, itemHeight:8 },
+    xAxis: { type:'category', data: data.map(d=>d.año), axisLine:{lineStyle:{color:'#1e2a3a'}}, axisLabel:{color:'#64748b'} },
+    yAxis: { type:'value', splitLine:{lineStyle:{color:'#1e2a3a'}}, axisLabel:{color:'#64748b'} },
+    series: [
+      { name:'Accidentes', type:'line', data: data.map(d=>d.total), smooth:true,
+        lineStyle:{color:COLORS.line,width:2}, areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,
+        colorStops:[{offset:0,color:'rgba(0,212,255,.3)'},{offset:1,color:'rgba(0,212,255,.01)'}]}},
+        symbol:'circle', symbolSize:5, itemStyle:{color:COLORS.line} },
+      { name:'Muertos', type:'bar', data: data.map(d=>d.muertos),
+        itemStyle:{color:COLORS.muertos}, barMaxWidth:16 },
+      { name:'Heridos', type:'bar', data: data.map(d=>d.heridos),
+        itemStyle:{color:COLORS.heridos}, barMaxWidth:16 },
+    ]
+  }));
+  window.addEventListener('resize', ()=>c.resize());
+}
+
+// ── Gravedad ─────────────────────────────────────────────────────────────────
+async function chartGravedad() {
+  const data = await fetch('/api/stats/por_gravedad').then(r=>r.json());
+  const pickColor = g => {
+    const u = (g||'').toUpperCase();
+    if (u.includes('MUERTO')) return COLORS.muertos;
+    if (u.includes('HERIDO')) return COLORS.heridos;
+    if (u.includes('DA'))     return COLORS.danos;
+    return '#7c3aed';
+  };
+  const c = echarts.init(document.getElementById('chart-gravedad'));
+  c.setOption(ecOpts({
+    tooltip: { trigger:'item', formatter:'{b}: {c} ({d}%)' },
+    legend: { orient:'vertical', left:'60%', top:'middle', textStyle:{color:'#94a3b8'}, itemHeight:8 },
+    grid: {},
+    series: [{
+      type:'pie', radius:['42%','68%'], center:['38%','50%'],
+      data: data.map(d=>({ name:d.gravedad, value:d.total,
+        itemStyle:{color: pickColor(d.gravedad)} })),
+      label:{ show:false },
+      emphasis:{ itemStyle:{ shadowBlur:8, shadowColor:'rgba(0,0,0,.4)' } }
+    }]
+  }));
+  window.addEventListener('resize', ()=>c.resize());
+}
+
+// ── Mes ──────────────────────────────────────────────────────────────────────
+async function chartMes() {
+  const data = await fetch('/api/stats/por_mes').then(r=>r.json());
+  const meses = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+  const c = echarts.init(document.getElementById('chart-mes'));
+  c.setOption(ecOpts({
+    tooltip: { trigger:'axis' },
+    xAxis: { type:'category', data:meses, axisLine:{lineStyle:{color:'#1e2a3a'}}, axisLabel:{color:'#64748b',fontSize:10} },
+    yAxis: { type:'value', splitLine:{lineStyle:{color:'#1e2a3a'}}, axisLabel:{color:'#64748b'} },
+    series: [{ type:'bar', data: data.map(d=>d.total),
+      itemStyle:{ color:{type:'linear',x:0,y:0,x2:0,y2:1,
+        colorStops:[{offset:0,color:'#00d4ff'},{offset:1,color:'rgba(0,212,255,.2)'}]}},
+      barMaxWidth:18 }]
+  }));
+  window.addEventListener('resize', ()=>c.resize());
+}
+
+// ── Día ──────────────────────────────────────────────────────────────────────
+async function chartDia() {
+  const data = await fetch('/api/stats/por_dia').then(r=>r.json());
+  const dias = ['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'];
+  const c = echarts.init(document.getElementById('chart-dia'));
+  c.setOption(ecOpts({
+    tooltip: { trigger:'axis' },
+    xAxis: { type:'category', data:dias, axisLine:{lineStyle:{color:'#1e2a3a'}}, axisLabel:{color:'#64748b',fontSize:10} },
+    yAxis: { type:'value', splitLine:{lineStyle:{color:'#1e2a3a'}}, axisLabel:{color:'#64748b'} },
+    series: [{ type:'bar', data: data.map(d=>d.total),
+      itemStyle:{ color:({dataIndex:i}) => i>=5 ? COLORS.muertos : COLORS.bar },
+      barMaxWidth:20 }]
+  }));
+  window.addEventListener('resize', ()=>c.resize());
+}
+
+// ── Hora ─────────────────────────────────────────────────────────────────────
+async function chartHora() {
+  const data = await fetch('/api/stats/por_hora').then(r=>r.json());
+  const c = echarts.init(document.getElementById('chart-hora'));
+  c.setOption(ecOpts({
+    tooltip: { trigger:'axis', formatter: p => `${p[0].axisValue}:00 → ${fmt(p[0].value)} accidentes` },
+    xAxis: { type:'category', data: data.map(d=>`${d.hora}h`), axisLabel:{color:'#64748b',fontSize:9}, axisLine:{lineStyle:{color:'#1e2a3a'}} },
+    yAxis: { type:'value', splitLine:{lineStyle:{color:'#1e2a3a'}}, axisLabel:{color:'#64748b'} },
+    series: [{ type:'line', data: data.map(d=>d.total), smooth:true,
+      lineStyle:{color:'#ffc700',width:2},
+      areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,
+        colorStops:[{offset:0,color:'rgba(255,199,0,.35)'},{offset:1,color:'rgba(255,199,0,.01)'}]}},
+      symbol:'none' }]
+  }));
+  window.addEventListener('resize', ()=>c.resize());
+}
+
+// ── Clase ────────────────────────────────────────────────────────────────────
+async function chartClase() {
+  const data = await fetch('/api/stats/por_clase').then(r=>r.json());
+  const c = echarts.init(document.getElementById('chart-clase'));
+  c.setOption(ecOpts({
+    tooltip: { trigger:'axis' },
+    grid: { left:120, right:16, top:8, bottom:24 },
+    xAxis: { type:'value', splitLine:{lineStyle:{color:'#1e2a3a'}}, axisLabel:{color:'#64748b'} },
+    yAxis: { type:'category', data: data.map(d=>d.clase).reverse(),
+      axisLabel:{color:'#94a3b8',fontSize:11}, axisLine:{lineStyle:{color:'#1e2a3a'}} },
+    series: [{ type:'bar', data: data.map(d=>d.total).reverse(),
+      itemStyle:{ color: ({dataIndex:i}) => COLORS.series[i % COLORS.series.length] },
+      barMaxWidth:14,
+      label:{ show:true, position:'right', color:'#64748b', fontSize:10, formatter:p=>fmt(p.value) } }]
+  }));
+  window.addEventListener('resize', ()=>c.resize());
+}
+
+// ── Tabla recientes ───────────────────────────────────────────────────────────
+async function loadTabla() {
+  const data = await fetch('/api/accidentes?limit=30').then(r=>r.json());
+  const tbody = document.getElementById('tabla-recientes');
+  if (!data.length) { tbody.innerHTML='<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px">Sin datos</td></tr>'; return; }
+  tbody.innerHTML = data.map(d=>`
+    <tr>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${d.fecha?.split('T')[0]||d.fecha||'—'}</td>
+      <td>${gravBadge(d.gravedad)}</td>
+      <td style="color:var(--text)">${d.clase||'—'}</td>
+      <td style="font-family:var(--mono);color:var(--accent3)">${d.heridos}</td>
+      <td style="font-family:var(--mono);color:var(--accent2)">${d.muertos}</td>
+    </tr>`).join('');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+(async () => {
+  await Promise.all([
+    loadKPIs(), chartAño(), chartGravedad(),
+    chartMes(), chartDia(), chartHora(),
+    chartClase(), loadTabla()
+  ]);
+})();
+</script>
+{% endblock %}

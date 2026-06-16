@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Mapa de calor — Accidentalidad Barranquilla{% endblock %}
+{% block page_title %}Mapa de calor de accidentes{% endblock %}
+
+{% block head %}
+<style>
+  .content { padding: 0 !important; }
+  .map-wrapper { position: relative; height: calc(100vh - 57px); }
+  #map { height: 100%; border-radius: 0; }
+
+  .map-controls {
+    position: absolute;
+    top: 16px; left: 16px;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .map-panel {
+    background: rgba(14,20,33,.92);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    backdrop-filter: blur(8px);
+    min-width: 200px;
+  }
+  .map-panel-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .filter-group label { font-size: 11px; color: var(--muted); }
+  .filter-group select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 12px;
+    padding: 6px 10px;
+    outline: none;
+    width: 100%;
+  }
+  .filter-group select:focus { border-color: var(--accent); }
+  .filter-group select option { background: var(--surface); }
+
+  .map-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 12px;
+  }
+  .map-stat-label { color: var(--muted); }
+  .map-stat-value { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 4px 0;
+  }
+  .toggle {
+    position: relative; width: 34px; height: 18px;
+    cursor: pointer;
+  }
+  .toggle input { display: none; }
+  .toggle-track {
+    position: absolute; inset: 0;
+    background: var(--border);
+    border-radius: 18px;
+    transition: background .2s;
+  }
+  .toggle-thumb {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s;
+  }
+  .toggle input:checked ~ .toggle-track { background: var(--accent); }
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+  .legend {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  /* Leaflet popup custom */
+  .leaflet-popup-content-wrapper {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4) !important;
+    color: var(--text) !important;
+    font-family: var(--sans) !important;
+  }
+  .leaflet-popup-tip { background: var(--surface) !important; }
+  .leaflet-popup-content { font-size: 12px !important; line-height: 1.6 !important; }
+  .popup-title { font-weight: 600; color: var(--accent); margin-bottom: 6px; font-size: 13px; }
+  .popup-row { display: flex; gap: 6px; }
+  .popup-label { color: var(--muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="map-wrapper">
+  <div id="map"></div>
+
+  <div class="map-controls">
+    <!-- Filtros -->
+    <div class="map-panel">
+      <div class="map-panel-title">Filtros</div>
+
+      <div class="filter-group">
+        <label>Modo de visualización</label>
+        <select id="modo" onchange="aplicarFiltros()">
+          <option value="heat">Mapa de calor</option>
+          <option value="puntos">Puntos individuales</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>Gravedad</label>
+        <select id="filtro-gravedad" onchange="aplicarFiltros()">
+          <option value="">Todas</option>
+          <option value="Con muertos">Con muertos</option>
+          <option value="Con heridos">Con heridos</option>
+          <option value="Solo daños">Solo daños</option>
+        </select>
+      </div>
+
+      <div class="toggle-row">
+        <span>Clústers visibles</span>
+        <label class="toggle">
+          <input type="checkbox" id="tog-cluster" checked onchange="aplicarFiltros()">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Estadísticas en mapa -->
+    <div class="map-panel">
+      <div class="map-panel-title">En pantalla</div>
+      <div class="map-stat">
+        <span class="map-stat-label">Puntos cargados</span>
+        <span class="map-stat-value" id="stat-puntos">—</span>
+      </div>
+      <div class="map-stat">
+        <span class="map-stat-label">Con coordenadas</span>
+        <span class="map-stat-value" id="stat-coords">—</span>
+      </div>
+    </div>
+
+    <!-- Leyenda -->
+    <div class="map-panel">
+      <div class="map-panel-title">Leyenda</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#ff4560"></div> Con muertos</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ffc700"></div> Con heridos</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#64748b"></div> Solo daños</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Mapa base ─────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: false }).setView([10.9685, -74.7813], 12);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© CartoDB',
+  maxZoom: 19,
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// ── Datos ─────────────────────────────────────────────────────────────────────
+let todosLosPuntos = [];
+let heatLayer = null;
+let markersLayer = null;
+
+function getColor(g='') {
+  const u = (g||'').toUpperCase();
+  if (u.includes('MUERTO')) return '#ff4560';
+  if (u.includes('HERIDO')) return '#ffc700';
+  if (u.includes('DA'))     return '#64748b';
+  return '#00d4ff';
+}
+
+async function cargarPuntos() {
+  const data = await fetch('/api/mapa/puntos?limit=3000').then(r=>r.json());
+  todosLosPuntos = data;
+  document.getElementById('stat-puntos').textContent = fmt(data.length);
+  document.getElementById('stat-coords').textContent = fmt(data.filter(d=>d.lat&&d.lng).length);
+  aplicarFiltros();
+}
+
+function aplicarFiltros() {
+  const modo      = document.getElementById('modo').value;
+  const gravedad  = document.getElementById('filtro-gravedad').value;
+
+  let pts = todosLosPuntos.filter(d => d.lat && d.lng);
+  if (gravedad) pts = pts.filter(d => (d.gravedad||'').toLowerCase() === gravedad.toLowerCase());
+
+  // Limpiar capas
+  if (heatLayer)    { map.removeLayer(heatLayer);    heatLayer = null; }
+  if (markersLayer) { map.removeLayer(markersLayer); markersLayer = null; }
+
+  if (modo === 'heat') {
+    const heatPts = pts.map(d => [d.lat, d.lng, 1]);
+    heatLayer = L.heatLayer(heatPts, {
+      radius: 18, blur: 20, maxZoom: 17,
+      gradient: { 0.1:'#00d4ff', 0.4:'#ffc700', 0.7:'#ff6b35', 1:'#ff4560' }
+    }).addTo(map);
+  } else {
+    markersLayer = L.layerGroup();
+    pts.forEach(d => {
+      const color = getColor(d.gravedad);
+      const marker = L.circleMarker([d.lat, d.lng], {
+        radius: 5,
+        fillColor: color,
+        color: '#000',
+        weight: 0.5,
+        fillOpacity: 0.8,
+      });
+      marker.bindPopup(`
+        <div class="popup-title">${d.gravedad || 'Sin gravedad'}</div>
+        <div class="popup-row"><span class="popup-label">Clase:</span> ${d.clase||'—'}</div>
+        <div class="popup-row"><span class="popup-label">Fecha:</span> ${d.fecha?.split('T')[0]||'—'}</div>
+        <div class="popup-row"><span class="popup-label">Sitio:</span> ${d.sitio||'—'}</div>
+        <div class="popup-row"><span class="popup-label">Coords:</span> <span style="font-family:var(--mono);font-size:10px">${d.lat?.toFixed(5)}, ${d.lng?.toFixed(5)}</span></div>
+      `);
+      markersLayer.addLayer(marker);
+    });
+    markersLayer.addTo(map);
+  }
+}
+
+cargarPuntos();
+</script>
+{% endblock %}

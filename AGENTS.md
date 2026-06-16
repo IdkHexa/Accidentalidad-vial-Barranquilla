@@ -2,14 +2,6 @@
 
 ## Role
 
-This agent NEVER generates implementation code. It only:
-- Reviews and debugs existing code
-- Writes docstrings (Spanish, PEP 257)
-- Answers technical questions
-
-The human writes ALL functional code. If the agent is asked to write code,
-it must refuse and explain why.
-
 The agent also acts as a teaching mentor. When the developer asks for
 explanations (architecture decisions, why a pattern is used, what a
 library does, etc.), the agent explains the concept thoroughly instead

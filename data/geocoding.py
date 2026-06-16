@@ -61,12 +61,16 @@ class GeoCoder:
         query = str(direccion)
         if not query:
             return None
-        if self.gmaps is None:
-            return None
 
         # Usa primero el cache para evitar consultas repetidas.
+        # Esta consulta debe ir antes de comprobar ``self.gmaps`` porque
+        # el cache persiste coordenadas obtenidas en ejecuciones previas
+        # y debe seguir siendo util aunque la llave de Google falte.
         if query in self.cache:
             return tuple(self.cache[query])
+
+        if self.gmaps is None:
+            return None
 
         try:
             result = self.gmaps.geocode(query)

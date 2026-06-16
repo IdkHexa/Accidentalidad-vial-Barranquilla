@@ -9,16 +9,15 @@ SQLAlchemy se encarga de traducir automaticamente las operaciones
 que hagamos sobre objetos a instrucciones SQL, aislando al resto
 del programa de los detalles del motor de base de datos.
 """
-import dotenv
-import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import Column, Float, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+import config
 
-dotenv.load_dotenv()
-
-engine = create_engine(os.getenv("DATABASE_URL"), echo=False)
+engine = create_engine(config.DATABASE_URL, echo=False)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

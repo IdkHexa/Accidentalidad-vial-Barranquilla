@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}Registrar accidente — Accidentalidad Barranquilla{% endblock %}
+{% block page_title %}Registrar nuevo accidente{% endblock %}
+
+{% block head %}
+<style>
+  .registro-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 20px;
+    align-items: start;
+  }
+  #mini-map { height: 280px; border-radius: var(--radius); cursor: crosshair; }
+  .coord-display {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .coord-display input { flex: 1; }
+  .map-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .historial-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .hist-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 14px;
+    font-size: 12px;
+    animation: fadeUp .3s ease;
+  }
+  .hist-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .hist-item-id {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="registro-grid">
+
+  <!-- Formulario -->
+  <div class="card fade-up">
+    <div class="card-title">Datos del accidente</div>
+    <form id="form-accidente">
+      <div class="form-grid">
+
+        <div class="form-group">
+          <label>Fecha del accidente</label>
+          <input type="date" name="fecha_accidente" required id="inp-fecha"/>
+        </div>
+        <div class="form-group">
+          <label>Hora del accidente</label>
+          <input type="time" name="hora_accidente" required id="inp-hora"/>
+        </div>
+
+        <div class="form-group">
+          <label>Gravedad</label>
+          <select name="gravedad_accidente" required>
+            <option value="">Seleccionar…</option>
+            <option value="Con muertos">Con muertos</option>
+            <option value="Con heridos">Con heridos</option>
+            <option value="Solo daños">Solo daños</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Clase de accidente</label>
+          <select name="clase_accidente" required>
+            <option value="">Seleccionar…</option>
+            <option>Choque</option>
+            <option>Atropello</option>
+            <option>Caida Ocupante</option>
+            <option>Volcamiento</option>
+            <option>Incendio</option>
+            <option>Otro</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Año</label>
+          <input type="number" name="a_o_accidente" min="2018" max="2030" placeholder="2024" required id="inp-año"/>
+        </div>
+        <div class="form-group">
+          <label>Mes</label>
+          <select name="mes_accidente" required>
+            <option value="">Seleccionar…</option>
+            {% for m in ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'] %}
+            <option>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Día de la semana</label>
+          <select name="dia_accidente" required>
+            <option value="">Seleccionar…</option>
+            {% for d in ['LUNES','MARTES','MIERCOLES','JUEVES','VIERNES','SABADO','DOMINGO'] %}
+            <option>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Cantidad accidentes</label>
+          <input type="number" name="cantidad_accidentes" value="1" min="1"/>
+        </div>
+
+        <div class="form-group form-full">
+          <label>Sitio exacto</label>
+          <input type="text" name="sitio_exacto_accidente" placeholder="Ej: CL 72 # 43-10"/>
+        </div>
+
+        <div class="form-group">
+          <label>Heridos en sitio</label>
+          <input type="number" name="cant_heridos_en_sitio_accidente" value="0" min="0"/>
+        </div>
+        <div class="form-group">
+          <label>Muertos en sitio</label>
+          <input type="number" name="cant_muertos_en_sitio_accidente" value="0" min="0"/>
+        </div>
+
+        <!-- Coords ocultas llenadas por el mapa -->
+        <input type="hidden" name="latitud"  id="inp-lat"/>
+        <input type="hidden" name="longitud" id="inp-lng"/>
+
+        <div class="form-group form-full" style="flex-direction:row;gap:10px;align-items:center;margin-top:8px">
+          <button type="submit" class="btn btn-primary" style="flex:1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            Guardar accidente
+          </button>
+          <button type="button" class="btn btn-ghost" onclick="resetForm()">Limpiar</button>
+        </div>
+
+      </div>
+    </form>
+  </div>
+
+  <!-- Panel derecho: mapa + historial -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+
+    <div class="card fade-up delay-1">
+      <div class="card-title">Ubicación en el mapa</div>
+      <div class="map-hint">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+        Haz clic en el mapa para fijar las coordenadas
+      </div>
+      <div id="mini-map"></div>
+      <div class="coord-display">
+        <div class="form-group" style="flex:1">
+          <label>Latitud</label>
+          <input type="text" id="show-lat" readonly placeholder="—" style="color:var(--accent);font-family:var(--mono)"/>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Longitud</label>
+          <input type="text" id="show-lng" readonly placeholder="—" style="color:var(--accent);font-family:var(--mono)"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="card fade-up delay-2">
+      <div class="card-title">Últimos registrados en esta sesión</div>
+      <div class="historial-list" id="historial">
+        <div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">
+          Los accidentes registrados aparecerán aquí
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Mini mapa ──────────────────────────────────────────────────────────────
+const miniMap = L.map('mini-map').setView([10.9685, -74.7813], 12);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution:'©CartoDB', maxZoom:19
+}).addTo(miniMap);
+
+let pinMarker = null;
+miniMap.on('click', e => {
+  const { lat, lng } = e.latlng;
+  if (pinMarker) miniMap.removeLayer(pinMarker);
+  pinMarker = L.circleMarker([lat, lng], {
+    radius: 8, fillColor:'#00d4ff', color:'#000', weight:1, fillOpacity:.9
+  }).addTo(miniMap);
+  document.getElementById('inp-lat').value  = lat.toFixed(6);
+  document.getElementById('inp-lng').value  = lng.toFixed(6);
+  document.getElementById('show-lat').value = lat.toFixed(6);
+  document.getElementById('show-lng').value = lng.toFixed(6);
+});
+
+// ── Auto-fill fecha/hora/año/día ───────────────────────────────────────────
+(function() {
+  const now = new Date();
+  document.getElementById('inp-fecha').value = now.toISOString().split('T')[0];
+  document.getElementById('inp-hora').value  = now.toTimeString().slice(0,5);
+  document.getElementById('inp-año').value   = now.getFullYear();
+})();
+
+// ── Historial en sesión ────────────────────────────────────────────────────
+const sesion = [];
+
+function addHistorial(acc) {
+  sesion.unshift(acc);
+  const div = document.getElementById('historial');
+  div.innerHTML = sesion.map(a => {
+    const u = (a.gravedad||'').toUpperCase();
+    const cls = u.includes('MUERTO') ? 'fatal'
+              : u.includes('HERIDO') ? 'grave'
+              : u.includes('DA')     ? 'solo'
+              : 'leve';
+    return `
+    <div class="hist-item">
+      <div class="hist-item-top">
+        <span class="badge badge-${cls}">${a.gravedad||'—'}</span>
+        <span class="hist-item-id">#${a.id}</span>
+      </div>
+      <div style="color:var(--muted)">${a.clase||'—'} · ${a.fecha||'—'}</div>
+      ${a.sitio ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${a.sitio}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Formulario ─────────────────────────────────────────────────────────────
+document.getElementById('form-accidente').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+
+  const btn = e.target.querySelector('[type="submit"]');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+
+  try {
+    const res = await fetch('/api/accidentes', { method:'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✅ Accidente #${data.id} registrado`, 'success');
+      addHistorial({
+        id:      data.id,
+        gravedad: fd.get('gravedad_accidente'),
+        clase:    fd.get('clase_accidente'),
+        fecha:    fd.get('fecha_accidente'),
+        sitio:    fd.get('sitio_exacto_accidente'),
+      });
+      // No limpiar todo el form, solo quitar pin y ajustar
+      if (pinMarker) { miniMap.removeLayer(pinMarker); pinMarker = null; }
+      document.getElementById('inp-lat').value  = '';
+      document.getElementById('inp-lng').value  = '';
+      document.getElementById('show-lat').value = '';
+      document.getElementById('show-lng').value = '';
+    } else {
+      showToast('Error al guardar', 'error');
+    }
+  } catch(err) {
+    showToast('Error de conexión', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Guardar accidente`;
+  }
+});
+
+function resetForm() {
+  document.getElementById('form-accidente').reset();
+  if (pinMarker) { miniMap.removeLayer(pinMarker); pinMarker = null; }
+  document.getElementById('show-lat').value = '';
+  document.getElementById('show-lng').value = '';
+  // Re-poner fecha/hora
+  const now = new Date();
+  document.getElementById('inp-fecha').value = now.toISOString().split('T')[0];
+  document.getElementById('inp-hora').value  = now.toTimeString().slice(0,5);
+  document.getElementById('inp-año').value   = now.getFullYear();
+}
+</script>
+{% endblock %}
