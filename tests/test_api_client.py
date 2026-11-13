@@ -13,19 +13,10 @@ from api.api_client import ApiClient
 
 
 class TestApiClient(unittest.TestCase):
-    """Ejercita la paginacion, el manejo de errores y el cierre del cliente.
+    """Ejercita la paginacion, el conteo, el manejo de errores y el cierre del cliente."""
 
-    Cada test crea una instancia de ``ApiClient`` con el ``AsyncClient``
-    reemplazado por un ``MagicMock``, lo que permite simular respuestas
-    HTTP sin tocar internet.
-    """
     def setUp(self):
-        """Reemplaza ``httpx.AsyncClient`` por un mock antes de cada test.
-
-        ``self.mock_instance`` es el objeto que se usara como
-        ``client.client`` dentro de ``ApiClient``.  ``get`` y ``aclose``
-        son ``AsyncMock`` para poder simular llamadas asincronas.
-        """
+        """Reemplaza ``httpx.AsyncClient`` por un mock antes de cada test."""
         self.patcher = patch("api.api_client.httpx.AsyncClient")
         self.mock_async_client = self.patcher.start()
         self.mock_instance = MagicMock()
@@ -50,10 +41,13 @@ class TestApiClient(unittest.TestCase):
         self.assertEqual(len(resultado), 500)
         self.assertEqual(self.mock_instance.get.call_count, 1)
         primer_llamado = self.mock_instance.get.call_args_list[0]
-        self.assertEqual(primer_llamado.kwargs["params"], {"$limit": 500, "$offset": 0, "$order": "fecha_accidente"})
+        self.assertEqual(
+            primer_llamado.kwargs["params"],
+            {"$limit": 500, "$offset": 0, "$order": "fecha_accidente, :id"},
+        )
 
     def test_limite_igual_a_pagina(self):
-        """Con limit=1000, hace UNA llamada y no pide más."""
+        """Con limit=1000, hace UNA llamada y no pide mas."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = [{"id": i} for i in range(1000)]
         mock_resp.raise_for_status = MagicMock()
@@ -65,7 +59,10 @@ class TestApiClient(unittest.TestCase):
         self.assertEqual(len(resultado), 1000)
         self.assertEqual(self.mock_instance.get.call_count, 1)
         primer_llamado = self.mock_instance.get.call_args_list[0]
-        self.assertEqual(primer_llamado.kwargs["params"], {"$limit": 1000, "$offset": 0, "$order": "fecha_accidente"})
+        self.assertEqual(
+            primer_llamado.kwargs["params"],
+            {"$limit": 1000, "$offset": 0, "$order": "fecha_accidente, :id"},
+        )
 
     def test_paginacion_multiple(self):
         """Con limit=2500, hace 3 llamadas: 1000 + 1000 + 500."""
@@ -93,9 +90,9 @@ class TestApiClient(unittest.TestCase):
         params_2 = self.mock_instance.get.call_args_list[1].kwargs["params"]
         params_3 = self.mock_instance.get.call_args_list[2].kwargs["params"]
 
-        self.assertEqual(params_1, {"$limit": 1000, "$offset": 0, "$order": "fecha_accidente"})
-        self.assertEqual(params_2, {"$limit": 1000, "$offset": 1000, "$order": "fecha_accidente"})
-        self.assertEqual(params_3, {"$limit": 500, "$offset": 2000, "$order": "fecha_accidente"})
+        self.assertEqual(params_1, {"$limit": 1000, "$offset": 0, "$order": "fecha_accidente, :id"})
+        self.assertEqual(params_2, {"$limit": 1000, "$offset": 1000, "$order": "fecha_accidente, :id"})
+        self.assertEqual(params_3, {"$limit": 500, "$offset": 2000, "$order": "fecha_accidente, :id"})
 
     def test_api_devuelve_menos_registros(self):
         """Si la API solo tiene 100 registros, se corta ahi aunque pidamos 500."""
@@ -110,6 +107,18 @@ class TestApiClient(unittest.TestCase):
         self.assertEqual(len(resultado), 100)
         self.assertEqual(self.mock_instance.get.call_count, 1)
 
+    def test_obtener_total_devuelve_entero(self):
+        """``obtener_total`` interpreta la respuesta de ``$select=count(*)``."""
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [{"count": "28865"}]
+        mock_resp.raise_for_status = MagicMock()
+        self.mock_instance.get.return_value = mock_resp
+
+        client = ApiClient()
+        total = asyncio.run(client.obtener_total())
+
+        self.assertEqual(total, 28865)
+
     def test_error_http_no_interrumpe_proceso(self):
         """Un error HTTP muestra el mensaje y devuelve lo descargado hasta ahi."""
         self.mock_instance.get.side_effect = Exception("timeout")
@@ -121,7 +130,7 @@ class TestApiClient(unittest.TestCase):
         self.assertEqual(self.mock_instance.get.call_count, 1)
 
     def test_close_cierra_cliente_http(self):
-        """close() llama a aclose() del cliente interno."""
+        """``close()`` llama a ``aclose()`` del cliente interno."""
         client = ApiClient()
         asyncio.run(client.close())
 

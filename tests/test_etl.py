@@ -77,13 +77,13 @@ class TestEtlPipeline(unittest.TestCase):
         mock_session_cls.return_value = mock_session
 
         mock_repo = MagicMock()
-        mock_repo.insertar_lote.return_value = 2
+        mock_repo.sincronizar_lote.return_value = 2
         mock_repo_cls.return_value = mock_repo
 
         resultado = asyncio.run(ejecutar_etl(2, guardar_en_bd=True))
 
         self.assertEqual(len(resultado), 2)
-        mock_repo.insertar_lote.assert_called_once()
+        mock_repo.sincronizar_lote.assert_called_once()
         mock_geocoder.obtener_coordenadas.assert_not_called()
 
     @patch("data.etl.AccidenteRepository")
@@ -129,7 +129,7 @@ class TestEtlPipeline(unittest.TestCase):
         mock_session_cls.return_value = mock_session
 
         mock_repo = MagicMock()
-        mock_repo.insertar_lote.return_value = 1
+        mock_repo.sincronizar_lote.return_value = 1
         mock_repo_cls.return_value = mock_repo
 
         resultado = asyncio.run(ejecutar_etl(1, guardar_en_bd=True))
@@ -185,7 +185,7 @@ class TestEtlPipeline(unittest.TestCase):
         resultado = asyncio.run(ejecutar_etl(1, guardar_en_bd=True))
 
         self.assertEqual(len(resultado), 0)
-        mock_repo.insertar_lote.assert_called_once_with([])
+        mock_repo.sincronizar_lote.assert_called_once_with([])
 
     @patch("data.etl.AccidenteRepository")
     @patch("data.etl.SessionLocal")
@@ -215,7 +215,7 @@ class TestEtlPipeline(unittest.TestCase):
         resultado = asyncio.run(ejecutar_etl(5, guardar_en_bd=True))
 
         self.assertEqual(len(resultado), 0)
-        mock_repo.insertar_lote.assert_called_once_with([])
+        mock_repo.sincronizar_lote.assert_called_once_with([])
 
     @patch("data.etl.AccidenteRepository")
     @patch("data.etl.SessionLocal")
@@ -264,7 +264,7 @@ class TestEtlPipeline(unittest.TestCase):
         resultado = asyncio.run(ejecutar_etl(1, guardar_en_bd=False))
 
         self.assertEqual(len(resultado), 1)
-        mock_repo.insertar_lote.assert_not_called()
+        mock_repo.sincronizar_lote.assert_not_called()
 
 
 if __name__ == "__main__":

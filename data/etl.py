@@ -100,8 +100,8 @@ async def ejecutar_etl(limite_registros, guardar_en_bd=True):
         session = SessionLocal()
         try:
             repo = AccidenteRepository(session)
-            total_insertado = repo.insertar_lote(validos)
-            print(f"  -> {total_insertado} registros insertados.")
+            total_insertado = repo.sincronizar_lote(validos)
+            print(f"  -> {total_insertado} registros nuevos insertados.")
 
         except Exception as e:
             # Si algo falla durante la insercion, hacemos rollback para

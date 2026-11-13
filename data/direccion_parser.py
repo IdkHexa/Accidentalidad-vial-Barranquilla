@@ -1,11 +1,12 @@
 """Parser de direcciones usado durante la transformacion de datos.
 
-Convierte direcciones en texto libre a una estructura mas uniforme.
+Convierte direcciones en texto libre a una estructura mas uniforme para
+alimentar tanto al geocodificador como a las consultas de ubicacion.
 """
 
+import dataclasses
 from enum import Enum
 import re
-import dataclasses
 
 # Relaciona abreviaturas frecuentes con una forma estandar.
 MAPEO_DIRECCIONES = {
@@ -25,24 +26,23 @@ MAPEO_DIRECCIONES = {
     "CALLE": "Calle",
     "CARRERA": "Carrera",
     "AVENIDA": "Avenida",
-    "DIAGONAL": "Diagonal",
     "VIA": "Via",
+    "DIAGONAL": "Diagonal",
     "TRANSVERSAL": "Transversal",
 }
 
 
 @dataclasses.dataclass
 class DireccionParseada:
-    """
-    Guarda una direccion separada en partes.
+    """Guarda una direccion separada en partes.
 
     Campos principales:
-    - `tipo_via`: nombre de la via principal.
-    - `numero_via`: numero de la via principal.
-    - `numero_cruce`: numero de la via cruzada.
-    - `complemento`: numero final o placa.
-    - `interseccion`: segunda via cuando la direccion viene como cruce.
-    - `raw`: texto original recibido.
+    - ``tipo_via``: nombre de la via principal.
+    - ``numero_via``: numero de la via principal.
+    - ``numero_cruce``: numero de la via cruzada.
+    - ``complemento``: numero final o placa.
+    - ``interseccion``: segunda via cuando la direccion viene como cruce.
+    - ``raw``: texto original recibido.
     """
 
     tipo_via: str | None = None
@@ -63,8 +63,8 @@ class DireccionParseada:
         if self.tipo_via and self.interseccion:
             return f"{self.tipo_via} con {self.interseccion}, Barranquilla, Colombia"
 
-        if self.raw:
-            return f"{self.raw}, Barranquilla, Colombia"
+        if self.raw and self.raw.strip():
+            return f"{self.raw.strip()}, Barranquilla, Colombia"
 
         return ""
 
@@ -79,49 +79,54 @@ class TipoDireccion(Enum):
     INSUFICIENTE = "insuficiente"
 
 
-def limpiar_direccion(direccion: str) -> str:
-    """
-    Normaliza el texto antes del parseo.
+def limpiar_direccion(direccion: str | None) -> str:
+    """Normaliza el texto antes del parseo eliminando ruido y tildes comunes.
 
-    `direccion` es la cadena original tomada del dataset.
+    ``direccion`` es la cadena original tomada del dataset (puede ser ``None``).
     """
-    direccion = direccion.upper()
-    direccion = re.sub(r"[.,#\-]", " ", direccion)
+    if not direccion or not isinstance(direccion, str):
+        return ""
+
+    texto = direccion.upper().replace("VÍA", "VIA")
+    texto = re.sub(r"[.,#\-]", " ", texto)
 
     # Elimina palabras que no aportan a la direccion principal.
     ruido = ["FRENTE", "BARR", "BARRIO", "ESQUINA", "ESQ", "NO", "NUMERO", "AL", "DEL"]
-    for r in ruido:
-        direccion = re.sub(r"\b" + r + r"\b", "", direccion)
+    for palabra in ruido:
+        texto = re.sub(r"\b" + palabra + r"\b", "", texto)
 
     for abr, full in MAPEO_DIRECCIONES.items():
-        direccion = re.sub(r"\b" + abr + r"\b", full, direccion)
+        texto = re.sub(r"\b" + abr + r"\b", full, texto)
 
-    return " ".join(direccion.split())
+    return " ".join(texto.split())
 
 
 # Expresion regular para reconocer el formato mas comun de direccion.
 PATRON_ESTANDAR = re.compile(
     r"(?P<tipo>Calle|Carrera|Avenida|Diagonal|Transversal|Via)"
-    r"\s+(?P<via>\d+[A-Z]?)"
-    r"(?:\s+(?P<cruce>\d+[A-Z]?))?"
+    r"\s+(?P<via>\d+(?:[A-Z])?(?:\s+BIS)?)"
+    r"(?:\s+(?P<cruce>\d+(?:[A-Z])?(?:\s+BIS)?))?"
     r"(?:\s+(?P<placa>\d+))?"
     r".*$",
     re.IGNORECASE,
 )
 
 
-def parsear_texto(direccion: str) -> DireccionParseada:
-    """
-    Interpreta una direccion y devuelve un objeto estructurado.
+def parsear_texto(direccion: str | None) -> DireccionParseada:
+    """Interpreta una direccion y devuelve un objeto estructurado.
 
-    El proceso limpia el texto, busca intersecciones y luego intenta aplicar
-    el patron estandar.
+    El proceso limpia el texto, busca intersecciones (partiendo solo por la
+    primera ocurrencia del conector para no perder datos) y luego intenta
+    aplicar el patron estandar.
     """
+    if not direccion or not isinstance(direccion, str) or not direccion.strip():
+        return DireccionParseada(raw=None)
+
     texto_limpio = limpiar_direccion(direccion)
 
     for conector in [" CON ", " Y "]:
         if conector in texto_limpio:
-            partes = texto_limpio.split(conector)
+            partes = texto_limpio.split(conector, 1)
             return DireccionParseada(
                 tipo_via=partes[0].strip(),
                 interseccion=partes[1].strip(),

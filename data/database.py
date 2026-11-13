@@ -1,23 +1,20 @@
 """Configuracion del motor de base de datos y modelo ORM.
 
-Este modulo centraliza la conexion a la base de datos (PostgreSQL
-en este caso) y define el mapeo
-objeto-relacional (ORM) que permite tratar los registros de accidentes
-como objetos de Python en lugar de escribir SQL directamente.
-
-SQLAlchemy se encarga de traducir automaticamente las operaciones
-que hagamos sobre objetos a instrucciones SQL, aislando al resto
-del programa de los detalles del motor de base de datos.
+Este modulo centraliza la conexion a la base de datos (PostgreSQL o SQLite
+en pruebas) y define el mapeo objeto-relacional (ORM) e indices secundarios
+para consultar registros de accidentalidad sin escribir SQL crudo.
 """
-from pathlib import Path
 
-from dotenv import load_dotenv
-from sqlalchemy import Column, Float, Integer, String, Text, create_engine
+from sqlalchemy import Column, Float, Index, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 import config
 
-engine = create_engine(config.DATABASE_URL, echo=False)
+engine = create_engine(
+    config.DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -28,16 +25,18 @@ class AccidenteDB(Base):
     """Modelo ORM que representa un accidente de transito en la base de datos.
 
     Cada instancia de esta clase corresponde a una fila en la tabla
-    ``accidentes``.  Los nombres de las columnas siguen la misma
-    convencion que el DTO de Pydantic para facilitar la conversion
-    entre ambos mundos (objeto de memoria y registro persistente).
-
-    La columna ``id`` es una clave primaria autoincremental generada
-    por la base de datos; no viene del dataset original sino que la creamos
-    nosotros para poder identificar univocamente cada registro.
+    ``accidentes``. Incluye indices sobre las columnas de filtro y
+    agregacion (``a_o_accidente``, ``gravedad_accidente``, ``fecha_accidente``
+    y el par ``latitud, longitud``) para acelerar consultas analiticas.
     """
 
     __tablename__ = "accidentes"
+    __table_args__ = (
+        Index("ix_accidentes_anio", "a_o_accidente"),
+        Index("ix_accidentes_gravedad", "gravedad_accidente"),
+        Index("ix_accidentes_fecha", "fecha_accidente"),
+        Index("ix_accidentes_coords", "latitud", "longitud"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     fecha_accidente = Column(String(50), nullable=False)
@@ -50,7 +49,7 @@ class AccidenteDB(Base):
     sitio_exacto_accidente = Column(Text, nullable=True)
     cant_heridos_en_sitio_accidente = Column(Integer, default=0)
     cant_muertos_en_sitio_accidente = Column(Integer, default=0)
-    cantidad_accidentes = Column(Integer, default=0)
+    cantidad_accidentes = Column(Integer, default=1)
     latitud = Column(Float, nullable=True)
     longitud = Column(Float, nullable=True)
 
@@ -58,17 +57,16 @@ class AccidenteDB(Base):
     def desde_dto(cls, dto):
         """Convierte un ``AccidenteDTO`` (Pydantic) en un ``AccidenteDB`` (SQLAlchemy).
 
-        Este metodo es el puente entre la capa de validacion y la de
-        persistencia: toma el objeto limpio que produjo el ETL y lo
-        transforma en un registro listo para persistir en la base de datos.
-
         Parametros:
         - ``dto``: instancia de ``AccidenteDTO`` con los datos validados.
 
-        Retorna una nueva instancia de ``AccidenteDB`` con los campos
-        mapeados uno a uno.  La direccion se convierte a texto plano
-        con ``str()`` para almacenarla como cadena.
+        Retorna una nueva instancia de ``AccidenteDB`` lista para persistir.
         """
+        sitio_texto = (
+            str(dto.SITIO_EXACTO_ACCIDENTE).strip()
+            if dto.SITIO_EXACTO_ACCIDENTE is not None
+            else ""
+        )
         return cls(
             fecha_accidente=dto.FECHA_ACCIDENTE,
             hora_accidente=dto.HORA_ACCIDENTE,
@@ -77,9 +75,7 @@ class AccidenteDB(Base):
             a_o_accidente=dto.AÑO_ACCIDENTE,
             mes_accidente=dto.MES_ACCIDENTE,
             dia_accidente=dto.DIA_ACCIDENTE,
-            sitio_exacto_accidente=str(dto.SITIO_EXACTO_ACCIDENTE)
-            if dto.SITIO_EXACTO_ACCIDENTE
-            else None,
+            sitio_exacto_accidente=sitio_texto or None,
             cant_heridos_en_sitio_accidente=dto.CANT_HERIDOS_EN_SITIO_ACCIDENTE,
             cant_muertos_en_sitio_accidente=dto.CANT_MUERTOS_EN_SITIO_ACCIDENTE,
             cantidad_accidentes=dto.CANTIDAD_ACCIDENTES,
@@ -88,13 +84,14 @@ class AccidenteDB(Base):
         )
 
 
-def init_db():
-    """Inicializa el esquema de la base de datos.
+def init_db(target_engine=None):
+    """Inicializa de forma idempotente tablas e indices de la base de datos.
 
-    Ejecuta ``Base.metadata.create_all()``, que inspecciona todas las
-    clases que heredan de ``Base`` (en este caso ``AccidenteDB``) y
-    crea sus tablas si aun no existen, sin importar el motor.
-    Es seguro llamarla multiples veces porque SQLAlchemy verifica
-    ``IF NOT EXISTS`` internamente.
+    Crea la tabla ``accidentes`` si no existe y garantiza que los indices
+    secundarios definidos en ``AccidenteDB`` tambien existan sobre tablas
+    creadas previamente.
     """
-    Base.metadata.create_all(bind=engine)
+    motor = target_engine or engine
+    Base.metadata.create_all(bind=motor)
+    for indice in AccidenteDB.__table__.indexes:
+        indice.create(bind=motor, checkfirst=True)

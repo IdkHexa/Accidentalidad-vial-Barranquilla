@@ -1,11 +1,12 @@
 """Pruebas unitarias del parser de direcciones."""
 
 import unittest
+
 from data.direccion_parser import parsear_texto
 
 
 class TestDireccionParser(unittest.TestCase):
-    """Verifica formatos de direccion soportados por el parser."""
+    """Verifica formatos de direccion y casos borde soportados por el parser."""
 
     def test_direccion_estandar(self):
         """Prueba una direccion con via, cruce y placa."""
@@ -24,14 +25,21 @@ class TestDireccionParser(unittest.TestCase):
         self.assertEqual(resultado.numero_via, "43B")
 
     def test_interseccion_con_con(self):
-        """Prueba una interseccion separada por `CON`."""
+        """Prueba una interseccion separada por ``CON``."""
         direccion = "CALLE 72 CON CRA 46"
         resultado = parsear_texto(direccion)
         self.assertEqual(resultado.tipo_via, "Calle 72")
         self.assertEqual(resultado.interseccion, "Carrera 46")
 
+    def test_interseccion_con_multiples_conectores(self):
+        """Conserva todo el tramo posterior cuando hay mas de un conector ``CON``."""
+        direccion = "VÍA 40 CON CALLE 85 CON SALIDA NORTE"
+        resultado = parsear_texto(direccion)
+        self.assertEqual(resultado.tipo_via, "Via 40")
+        self.assertEqual(resultado.interseccion, "Calle 85 CON SALIDA NORTE")
+
     def test_interseccion_con_y(self):
-        """Prueba una interseccion separada por `Y`."""
+        """Prueba una interseccion separada por ``Y``."""
         direccion = "VIA 40 Y CALLE 85"
         resultado = parsear_texto(direccion)
         self.assertEqual(resultado.tipo_via, "Via 40")
@@ -43,6 +51,12 @@ class TestDireccionParser(unittest.TestCase):
         resultado = parsear_texto(direccion)
         self.assertEqual(resultado.tipo_via, "Calle")
         self.assertEqual(resultado.numero_via, "50")
+
+    def test_entrada_nula_o_vacia(self):
+        """Retorna una estructura vacia sin lanzar excepciones ante None o texto vacio."""
+        self.assertIsNone(parsear_texto(None).raw)
+        self.assertIsNone(parsear_texto("   ").raw)
+        self.assertEqual(str(parsear_texto("")), "")
 
 
 if __name__ == "__main__":
