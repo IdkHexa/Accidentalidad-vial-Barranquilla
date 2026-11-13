@@ -1,24 +1,27 @@
 """Pruebas del modulo de clustering geoespacial.
 
 Verifica las funciones puras del pipeline de DBSCAN: conversion
-de unidades, filtrado geografico, ponderacion de severidad y
-el clustering completo con datos sinteticos.
-
-Los tests usan un DataFrame en memoria (no tocan la base de datos
-real) para que sean rapidos y deterministas.
+de unidades, filtrado geografico, ponderacion de severidad, resumen
+de hotspots y el pipeline completo conectado al repositorio DAO.
 """
 
 import unittest
 
-import numpy as np
 import pandas as pd
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from analytics.clustering import (
     calcular_pesos,
     ejecutar_clustering_dbscan,
     filtrar_por_bbox,
     kilometros_a_radianes,
+    obtener_clusters_pipeline,
+    resumir_clusters,
 )
+from data.database import Base
+from data.storage import AccidenteRepository
+from models.entidades import AccidenteDTO
 
 
 class TestKilometrosARadianes(unittest.TestCase):
@@ -37,6 +40,13 @@ class TestKilometrosARadianes(unittest.TestCase):
     def test_un_km(self):
         """Un kilometro debe dividirse exactamente por el radio terrestre."""
         self.assertAlmostEqual(kilometros_a_radianes(1.0), 1.0 / 6371.0)
+
+
+# Constantes del bounding box para los tests.
+_BBOX_LAT_MIN = 10.90
+_BBOX_LAT_MAX = 11.05
+_BBOX_LON_MIN = -74.90
+_BBOX_LON_MAX = -74.75
 
 
 class TestFiltrarPorBbox(unittest.TestCase):
@@ -82,13 +92,6 @@ class TestFiltrarPorBbox(unittest.TestCase):
         self.assertEqual(resultado.sum(), 2)
 
 
-# Constantes del bounding box para los tests.
-_BBOX_LAT_MIN = 10.90
-_BBOX_LAT_MAX = 11.05
-_BBOX_LON_MIN = -74.90
-_BBOX_LON_MAX = -74.75
-
-
 class TestCalcularPesos(unittest.TestCase):
     """Verifica la ponderacion de severidad para sample_weight."""
 
@@ -106,30 +109,33 @@ class TestCalcularPesos(unittest.TestCase):
         pesos = calcular_pesos(df)
         self.assertAlmostEqual(pesos[0], 1.0)
 
+    def test_cantidad_cero_usa_piso_uno(self):
+        """Si ``cantidad_accidentes`` viene en 0, conserva peso base minimo de 1.0."""
+        df = self._df([0], [0], [0])
+        pesos = calcular_pesos(df)
+        self.assertAlmostEqual(pesos[0], 1.0)
+
     def test_heridos_multiplican(self):
         """Cada herido aporta 1.5 al peso total."""
         df = self._df([1], [2], [0])
         pesos = calcular_pesos(df)
-        # 1 + 2 * 1.5 = 4.0
         self.assertAlmostEqual(pesos[0], 4.0)
 
     def test_muertos_multiplican(self):
         """Cada muerto aporta 3.0 al peso total."""
         df = self._df([1], [0], [1])
         pesos = calcular_pesos(df)
-        # 1 + 1 * 3.0 = 4.0
         self.assertAlmostEqual(pesos[0], 4.0)
 
     def test_victimas_mixtas(self):
         """Heridos y muertos se suman correctamente."""
         df = self._df([1], [2], [1])
         pesos = calcular_pesos(df)
-        # 1 + 2*1.5 + 1*3.0 = 1 + 3.0 + 3.0 = 7.0
         self.assertAlmostEqual(pesos[0], 7.0)
 
     def test_nulos_se_tratan_como_cero(self):
         """Valores nulos en victimas se interpretan como cero."""
-        df = self._df([1], [None], [None])
+        df = self._df([None], [None], [None])
         pesos = calcular_pesos(df)
         self.assertAlmostEqual(pesos[0], 1.0)
 
@@ -149,10 +155,11 @@ class TestEjecutarClusteringDbscan(unittest.TestCase):
         })
 
     def test_dataframe_vacio(self):
-        """Un DataFrame vacio debe retornarse vacio sin errores."""
+        """Un DataFrame vacio debe retornarse vacio pero con columna ``cluster``."""
         df_vacio = pd.DataFrame()
         resultado = ejecutar_clustering_dbscan(df_vacio)
         self.assertTrue(resultado.empty)
+        self.assertIn("cluster", resultado.columns)
 
     def test_todos_fuera_del_bbox(self):
         """Si todos los puntos estan fuera, todos quedan como ruido (-1)."""
@@ -181,20 +188,57 @@ class TestEjecutarClusteringDbscan(unittest.TestCase):
         self.assertNotEqual(clusters[0], -1)
 
     def test_ponderacion_cambia_clusters(self):
-        """Ponderar por severidad produce clusters distintos que sin ponderar."""
-        # 8 puntos livianos + 3 puntos pesados (misma zona)
-        df_livianos = self._df([(10.96, -74.80 + i * 0.0001) for i in range(8)])
-        df_pesados = self._df([(10.96, -74.80 + i * 0.0001) for i in range(8, 11)])
+        """Con menos puntos que ``min_muestras``, solo la mayor severidad forma cluster."""
+        # 3 puntos sin victimas (peso total = 3 < min_muestras=8) -> todo es ruido (-1)
+        df_livianos = self._df([(10.96, -74.80 + i * 0.0001) for i in range(3)])
+        res_livianos = ejecutar_clustering_dbscan(df_livianos, radio_metros=100, min_muestras=8)
+        self.assertTrue((res_livianos["cluster"] == -1).all())
+
+        # Mismos 3 puntos con victimas fatales (peso total = 30 >= min_muestras=8) -> 1 cluster
+        df_pesados = df_livianos.copy()
         df_pesados["cant_muertos_en_sitio_accidente"] = 3
-
-        df = pd.concat([df_livianos, df_pesados], ignore_index=True)
-
-        # Con min_muestras=8 (peso acumulado), los pesados deben formar cluster
-        resultado = ejecutar_clustering_dbscan(df, radio_metros=300, min_muestras=8)
-        n_clusters = len(set(resultado["cluster"])) - (
-            1 if -1 in resultado["cluster"].values else 0
+        res_pesados = ejecutar_clustering_dbscan(df_pesados, radio_metros=100, min_muestras=8)
+        n_clusters = len(set(res_pesados["cluster"])) - (
+            1 if -1 in res_pesados["cluster"].values else 0
         )
-        self.assertGreater(n_clusters, 0)
+        self.assertEqual(n_clusters, 1)
+
+    def test_resumir_clusters_filtra_singleton_y_calcula_centroide(self):
+        """``resumir_clusters`` descarta falsos clusters de 1 punto y calcula metricas."""
+        df = self._df([(10.98, -74.80)] * 4 + [(10.92, -74.88), (0.0, 0.0)])
+        df.loc[4, "cant_muertos_en_sitio_accidente"] = 5
+        clustered = ejecutar_clustering_dbscan(df, radio_metros=100, min_muestras=4)
+        resumen = resumir_clusters(clustered, min_puntos_cluster=3)
+        self.assertEqual(len(resumen["clusters"]), 1)
+        self.assertEqual(resumen["clusters"][0]["puntos"], 4)
+        self.assertEqual(resumen["total_fuera_bbox"], 1)
+
+    def test_obtener_clusters_pipeline_desde_repositorio(self):
+        """Verifica la integracion end-to-end del pipeline con SQLite en memoria."""
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=engine)
+        Session = sessionmaker(bind=engine)
+        with Session() as session:
+            repo = AccidenteRepository(session)
+            dtos = [
+                AccidenteDTO(
+                    fecha_accidente="2026-01-01",
+                    hora_accidente="10:00",
+                    gravedad_accidente="Con heridos",
+                    clase_accidente="Choque",
+                    a_o_accidente=2026,
+                    mes_accidente="ENERO",
+                    dia_accidente="JUEVES",
+                    latitud=10.985,
+                    longitud=-74.805,
+                )
+                for _ in range(5)
+            ]
+            repo.insertar_lote(dtos)
+            resultado = obtener_clusters_pipeline(repo, radio_metros=100, min_muestras=3)
+            self.assertEqual(len(resultado), 5)
+            self.assertTrue((resultado["cluster"] >= 0).all())
+        engine.dispose()
 
 
 if __name__ == "__main__":
