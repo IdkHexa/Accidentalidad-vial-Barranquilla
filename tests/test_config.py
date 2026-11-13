@@ -1,7 +1,8 @@
 """Pruebas de la configuracion del proyecto (``config.py``).
 
-Verifica que ``DATABASE_URL`` se lea del entorno cuando esta definida
-y que caiga al valor por defecto (SQLite) cuando no.
+Verifica que ``DATABASE_URL`` se lea del entorno cuando esta definida,
+que se construya con ``POSTGRES_*`` cuando corresponde y que caiga al
+valor por defecto (SQLite) cuando no existen credenciales.
 """
 
 import importlib
@@ -19,6 +20,11 @@ class TestConfigVariables(unittest.TestCase):
     estos tests usan ``reload`` y ``patch.dict`` para simular distintos
     entornos sin modificar las variables del sistema real.
     """
+
+    def tearDown(self):
+        """Restaura el estado original del modulo ``config`` tras cada test."""
+        importlib.reload(config)
+
     def test_api_url_es_la_correcta(self):
         """``API_URL`` es un string fijo que apunta al dataset de Socrata."""
         self.assertEqual(

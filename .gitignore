@@ -25,3 +25,6 @@ logs/
 
 # Archivos scratch (no versionar)
 scratch/
+
+# Salida temporal de analisis de repositorio
+repomix-output.xml
