@@ -1,48 +1,90 @@
 {% extends "base.html" %}
-{% block title %}Mapa de calor — Accidentalidad Barranquilla{% endblock %}
-{% block page_title %}Mapa de calor de accidentes{% endblock %}
+{% block title %}Mapa geoespacial — Accidentalidad Barranquilla{% endblock %}
+{% block page_title %}Mapa geoespacial de accidentes{% endblock %}
 
 {% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script defer src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <style>
   .content { padding: 0 !important; }
-  .map-wrapper { position: relative; height: calc(100vh - 57px); }
-  #map { height: 100%; border-radius: 0; }
+  .map-wrapper {
+    position: relative;
+    height: calc(100dvh - 73px);
+    min-height: 520px;
+  }
+  #map {
+    height: 100%;
+    width: 100%;
+    border-radius: 0;
+    background: #080d16;
+  }
 
   .map-controls {
     position: absolute;
-    top: 16px; left: 16px;
+    top: 16px;
+    left: 16px;
     z-index: 500;
     display: flex;
     flex-direction: column;
+    gap: 10px;
+    max-width: 260px;
+  }
+  .map-panel-toggle {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
     gap: 8px;
+    background: rgba(15, 22, 36, .95);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .map-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
   .map-panel {
-    background: rgba(14,20,33,.92);
+    background: rgba(15, 22, 36, .94);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 14px 16px;
     backdrop-filter: blur(8px);
-    min-width: 200px;
   }
   .map-panel-title {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: .1em;
+    letter-spacing: .08em;
     text-transform: uppercase;
     color: var(--muted);
     margin-bottom: 10px;
   }
-  .filter-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-  .filter-group label { font-size: 11px; color: var(--muted); }
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .filter-group label {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+  }
   .filter-group select {
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: 6px;
     color: var(--text);
     font-family: var(--sans);
-    font-size: 12px;
+    font-size: 13px;
+    min-height: 44px;
     padding: 6px 10px;
-    outline: none;
     width: 100%;
   }
   .filter-group select:focus { border-color: var(--accent); }
@@ -53,133 +95,172 @@
     justify-content: space-between;
     align-items: center;
     padding: 4px 0;
-    font-size: 12px;
+    font-size: 13px;
   }
   .map-stat-label { color: var(--muted); }
-  .map-stat-value { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+  .map-stat-value {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-weight: 600;
+  }
 
   .toggle-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 12px;
-    color: var(--muted);
-    padding: 4px 0;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text);
+    padding: 6px 0 2px;
   }
   .toggle {
-    position: relative; width: 34px; height: 18px;
+    position: relative;
+    width: 42px;
+    height: 24px;
     cursor: pointer;
+    flex-shrink: 0;
   }
-  .toggle input { display: none; }
   .toggle-track {
-    position: absolute; inset: 0;
+    position: absolute;
+    inset: 0;
     background: var(--border);
-    border-radius: 18px;
-    transition: background .2s;
+    border-radius: 999px;
+    transition: background .2s ease;
   }
   .toggle-thumb {
     position: absolute;
-    top: 2px; left: 2px;
-    width: 14px; height: 14px;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
     background: #fff;
     border-radius: 50%;
-    transition: transform .2s;
+    transition: transform .2s ease;
   }
   .toggle input:checked ~ .toggle-track { background: var(--accent); }
-  .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(18px); }
+  .toggle input:focus-visible ~ .toggle-track {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 
   .legend {
     display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 4px;
+    flex-direction: column;
+    gap: 6px;
   }
   .legend-item {
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: 10px;
+    gap: 8px;
+    font-size: 12px;
     color: var(--muted);
   }
   .legend-dot {
-    width: 8px; height: 8px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .legend-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #00d4ff, #fbbf24, #ff6b35, #ff4d6a);
+    margin: 2px 0;
   }
 
-  /* Leaflet popup custom */
   .leaflet-popup-content-wrapper {
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
     border-radius: 8px !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,.4) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .45) !important;
     color: var(--text) !important;
     font-family: var(--sans) !important;
   }
   .leaflet-popup-tip { background: var(--surface) !important; }
-  .leaflet-popup-content { font-size: 12px !important; line-height: 1.6 !important; }
-  .popup-title { font-weight: 600; color: var(--accent); margin-bottom: 6px; font-size: 13px; }
-  .popup-row { display: flex; gap: 6px; }
+  .leaflet-popup-content { font-size: 13px !important; line-height: 1.55 !important; }
+  .popup-title { font-weight: 700; color: var(--accent); margin-bottom: 6px; font-size: 14px; }
+  .popup-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .popup-label { color: var(--muted); }
+
+  @media (max-width: 700px) {
+    .map-wrapper { height: calc(100dvh - 69px); }
+    .map-controls { right: 16px; max-width: none; }
+    .map-panel-toggle { display: flex; }
+    .map-panels.collapsed { display: none; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="map-wrapper">
-  <div id="map"></div>
+  <div id="map" role="region" aria-label="Mapa de accidentalidad vial en Barranquilla"></div>
 
   <div class="map-controls">
-    <!-- Filtros -->
-    <div class="map-panel">
-      <div class="map-panel-title">Filtros</div>
+    <button type="button" class="map-panel-toggle" id="btn-panel-mapa" aria-expanded="true" onclick="togglePanelMapa()">
+      <span>Filtros y capas</span>
+      <span aria-hidden="true">▾</span>
+    </button>
 
-      <div class="filter-group">
-        <label>Modo de visualización</label>
-        <select id="modo" onchange="aplicarFiltros()">
-          <option value="heat">Mapa de calor</option>
-          <option value="puntos">Puntos individuales</option>
-        </select>
+    <div class="map-panels" id="map-panels">
+      <div class="map-panel">
+        <div class="map-panel-title">Filtros y capas</div>
+
+        <div class="filter-group">
+          <label for="modo">Modo de visualización</label>
+          <select id="modo" onchange="aplicarFiltros()">
+            <option value="heat">Mapa de calor</option>
+            <option value="puntos">Puntos individuales</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="filtro-gravedad">Gravedad</label>
+          <select id="filtro-gravedad" onchange="aplicarFiltros()">
+            <option value="">Todas</option>
+            <option value="Con muertos">Con muertos</option>
+            <option value="Con heridos">Con heridos</option>
+            <option value="Solo daños">Solo daños</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="filtro-año">Año</label>
+          <select id="filtro-año" onchange="recargarDesdeApi()">
+            <option value="">Todos (2018–2026)</option>
+          </select>
+        </div>
+
+        <div class="toggle-row">
+          <label for="tog-cluster">Hotspots DBSCAN</label>
+          <label class="toggle">
+            <input type="checkbox" id="tog-cluster" class="sr-only" role="switch" checked onchange="aplicarFiltros()"/>
+            <span class="toggle-track"></span>
+            <span class="toggle-thumb"></span>
+          </label>
+        </div>
       </div>
 
-      <div class="filter-group">
-        <label>Gravedad</label>
-        <select id="filtro-gravedad" onchange="aplicarFiltros()">
-          <option value="">Todas</option>
-          <option value="Con muertos">Con muertos</option>
-          <option value="Con heridos">Con heridos</option>
-          <option value="Solo daños">Solo daños</option>
-        </select>
+      <div class="map-panel">
+        <div class="map-panel-title">En pantalla</div>
+        <div class="map-stat">
+          <span class="map-stat-label">Puntos mostrados</span>
+          <span class="map-stat-value" id="stat-puntos">—</span>
+        </div>
+        <div class="map-stat">
+          <span class="map-stat-label">Total cargado</span>
+          <span class="map-stat-value" id="stat-coords">—</span>
+        </div>
+        <div class="map-stat">
+          <span class="map-stat-label">Hotspots DBSCAN</span>
+          <span class="map-stat-value" id="stat-clusters">—</span>
+        </div>
       </div>
 
-      <div class="toggle-row">
-        <span>Clústers visibles</span>
-        <label class="toggle">
-          <input type="checkbox" id="tog-cluster" checked onchange="aplicarFiltros()">
-          <div class="toggle-track"></div>
-          <div class="toggle-thumb"></div>
-        </label>
-      </div>
-    </div>
-
-    <!-- Estadísticas en mapa -->
-    <div class="map-panel">
-      <div class="map-panel-title">En pantalla</div>
-      <div class="map-stat">
-        <span class="map-stat-label">Puntos cargados</span>
-        <span class="map-stat-value" id="stat-puntos">—</span>
-      </div>
-      <div class="map-stat">
-        <span class="map-stat-label">Con coordenadas</span>
-        <span class="map-stat-value" id="stat-coords">—</span>
-      </div>
-    </div>
-
-    <!-- Leyenda -->
-    <div class="map-panel">
-      <div class="map-panel-title">Leyenda</div>
-      <div class="legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#ff4560"></div> Con muertos</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#ffc700"></div> Con heridos</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#64748b"></div> Solo daños</div>
+      <div class="map-panel">
+        <div class="map-panel-title">Leyenda</div>
+        <div class="legend" id="leyenda-contenido"></div>
       </div>
     </div>
   </div>
@@ -188,53 +269,132 @@
 
 {% block scripts %}
 <script>
-// ── Mapa base ─────────────────────────────────────────────────────────────────
-const map = L.map('map', { zoomControl: false }).setView([10.9685, -74.7813], 12);
-
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '© CartoDB',
-  maxZoom: 19,
-}).addTo(map);
-
-L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-// ── Datos ─────────────────────────────────────────────────────────────────────
+let map = null;
 let todosLosPuntos = [];
 let heatLayer = null;
 let markersLayer = null;
+let clustersLayer = null;
+let clustersDataCache = {};
 
-function getColor(g='') {
-  const u = (g||'').toUpperCase();
-  if (u.includes('MUERTO')) return '#ff4560';
-  if (u.includes('HERIDO')) return '#ffc700';
-  if (u.includes('DA'))     return '#64748b';
+function togglePanelMapa() {
+  const panels = document.getElementById('map-panels');
+  const btn = document.getElementById('btn-panel-mapa');
+  const colapsado = panels.classList.toggle('collapsed');
+  btn.setAttribute('aria-expanded', colapsado ? 'false' : 'true');
+}
+
+function getColor(g = '') {
+  const u = (g || '').toUpperCase();
+  if (u.includes('MUERTO')) return '#ff4d6a';
+  if (u.includes('HERIDO')) return '#fbbf24';
+  if (u.includes('DA'))     return '#94a3b8';
   return '#00d4ff';
 }
 
-async function cargarPuntos() {
-  const data = await fetch('/api/mapa/puntos?limit=3000').then(r=>r.json());
-  todosLosPuntos = data;
-  document.getElementById('stat-puntos').textContent = fmt(data.length);
-  document.getElementById('stat-coords').textContent = fmt(data.filter(d=>d.lat&&d.lng).length);
-  aplicarFiltros();
+function getClusterColor(nivel = '') {
+  if (nivel === 'critico') return '#ff4d6a';
+  if (nivel === 'alto')    return '#fbbf24';
+  return '#00d4ff';
 }
 
-function aplicarFiltros() {
-  const modo      = document.getElementById('modo').value;
-  const gravedad  = document.getElementById('filtro-gravedad').value;
+async function cargarAñosMapa() {
+  try {
+    const res = await fetch('/api/stats/años');
+    if (!res.ok) return;
+    const años = await res.json();
+    const sel = document.getElementById('filtro-año');
+    años.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a;
+      opt.textContent = a;
+      sel.appendChild(opt);
+    });
+  } catch {}
+}
+
+async function cargarPuntos() {
+  const año = document.getElementById('filtro-año').value;
+  const params = new URLSearchParams({ limit: '3000' });
+  if (año) params.set('año', año);
+  try {
+    const res = await fetch(`/api/mapa/puntos?${params.toString()}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    todosLosPuntos = await res.json();
+    document.getElementById('stat-coords').textContent = fmt(todosLosPuntos.length);
+  } catch {
+    showToast('No se pudieron cargar los puntos del mapa', 'error');
+    todosLosPuntos = [];
+  }
+}
+
+async function cargarClusters() {
+  const año = document.getElementById('filtro-año').value;
+  const clave = año || 'todos';
+  if (clustersDataCache[clave]) return clustersDataCache[clave];
+  const params = new URLSearchParams();
+  if (año) {
+    params.set('anio_desde', año);
+    params.set('anio_hasta', año);
+  }
+  const res = await fetch(`/api/stats/clusters?${params.toString()}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  clustersDataCache[clave] = data;
+  return data;
+}
+
+function actualizarLeyenda(modo, clustersActivos) {
+  const cont = document.getElementById('leyenda-contenido');
+  let html = '';
+  if (modo === 'heat') {
+    html += `
+      <div class="legend-item" style="flex-direction:column;align-items:stretch;gap:4px">
+        <span>Densidad de siniestros</span>
+        <div class="legend-bar"></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)">
+          <span>Baja</span><span>Alta</span>
+        </div>
+      </div>`;
+  } else {
+    html += `
+      <div class="legend-item"><span class="legend-dot" style="background:#ff4d6a"></span> Con muertos</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#fbbf24"></span> Con heridos</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#94a3b8"></span> Solo daños</div>`;
+  }
+  if (clustersActivos) {
+    html += `
+      <div class="legend-item" style="margin-top:4px;padding-top:6px;border-top:1px solid var(--border)">
+        <span class="legend-dot" style="border:2px solid #ff4d6a;background:rgba(255,77,106,.25)"></span>
+        Hotspot DBSCAN (100 m)
+      </div>`;
+  }
+  cont.innerHTML = html;
+}
+
+async function aplicarFiltros() {
+  if (!map) return;
+  const modo = document.getElementById('modo').value;
+  const gravedad = document.getElementById('filtro-gravedad').value;
+  const verClusters = document.getElementById('tog-cluster').checked;
 
   let pts = todosLosPuntos.filter(d => d.lat && d.lng);
-  if (gravedad) pts = pts.filter(d => (d.gravedad||'').toLowerCase() === gravedad.toLowerCase());
+  if (gravedad) {
+    pts = pts.filter(d => (d.gravedad || '').toLowerCase() === gravedad.toLowerCase());
+  }
 
-  // Limpiar capas
-  if (heatLayer)    { map.removeLayer(heatLayer);    heatLayer = null; }
-  if (markersLayer) { map.removeLayer(markersLayer); markersLayer = null; }
+  document.getElementById('stat-puntos').textContent = fmt(pts.length);
+
+  if (heatLayer)     { map.removeLayer(heatLayer);     heatLayer = null; }
+  if (markersLayer)  { map.removeLayer(markersLayer);  markersLayer = null; }
+  if (clustersLayer) { map.removeLayer(clustersLayer); clustersLayer = null; }
 
   if (modo === 'heat') {
     const heatPts = pts.map(d => [d.lat, d.lng, 1]);
     heatLayer = L.heatLayer(heatPts, {
-      radius: 18, blur: 20, maxZoom: 17,
-      gradient: { 0.1:'#00d4ff', 0.4:'#ffc700', 0.7:'#ff6b35', 1:'#ff4560' }
+      radius: 18,
+      blur: 20,
+      maxZoom: 17,
+      gradient: { 0.1: '#00d4ff', 0.4: '#fbbf24', 0.7: '#ff6b35', 1: '#ff4d6a' },
     }).addTo(map);
   } else {
     markersLayer = L.layerGroup();
@@ -243,23 +403,91 @@ function aplicarFiltros() {
       const marker = L.circleMarker([d.lat, d.lng], {
         radius: 5,
         fillColor: color,
-        color: '#000',
-        weight: 0.5,
-        fillOpacity: 0.8,
+        color: '#080d16',
+        weight: 0.75,
+        fillOpacity: 0.85,
       });
+      const fecha = escapeHtml(d.fecha ? String(d.fecha).split('T')[0] : '—');
       marker.bindPopup(`
-        <div class="popup-title">${d.gravedad || 'Sin gravedad'}</div>
-        <div class="popup-row"><span class="popup-label">Clase:</span> ${d.clase||'—'}</div>
-        <div class="popup-row"><span class="popup-label">Fecha:</span> ${d.fecha?.split('T')[0]||'—'}</div>
-        <div class="popup-row"><span class="popup-label">Sitio:</span> ${d.sitio||'—'}</div>
-        <div class="popup-row"><span class="popup-label">Coords:</span> <span style="font-family:var(--mono);font-size:10px">${d.lat?.toFixed(5)}, ${d.lng?.toFixed(5)}</span></div>
+        <div class="popup-title">${escapeHtml(d.gravedad || 'Sin gravedad')}</div>
+        <div class="popup-row"><span class="popup-label">Clase:</span> ${escapeHtml(d.clase || '—')}</div>
+        <div class="popup-row"><span class="popup-label">Fecha:</span> ${fecha}</div>
+        <div class="popup-row"><span class="popup-label">Sitio:</span> ${escapeHtml(d.sitio || '—')}</div>
+        <div class="popup-row"><span class="popup-label">Coords:</span> <span class="num-cell">${Number(d.lat).toFixed(5)}, ${Number(d.lng).toFixed(5)}</span></div>
       `);
       markersLayer.addLayer(marker);
     });
     markersLayer.addTo(map);
   }
+
+  if (verClusters) {
+    try {
+      const resClusters = await cargarClusters();
+      const lista = resClusters.clusters || [];
+      document.getElementById('stat-clusters').textContent = fmt(lista.length);
+      clustersLayer = L.layerGroup();
+      lista.slice(0, 120).forEach((c, idx) => {
+        const color = getClusterColor(c.nivel);
+        const circulo = L.circle([c.lat_centro, c.lng_centro], {
+          radius: 100,
+          color,
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 0.22,
+        });
+        circulo.bindPopup(`
+          <div class="popup-title">Hotspot #${idx + 1} (Clúster ${Number(c.cluster)})</div>
+          <div class="popup-row"><span class="popup-label">Nivel:</span> ${escapeHtml(String(c.nivel).toUpperCase())}</div>
+          <div class="popup-row"><span class="popup-label">Siniestros:</span> <strong class="num-cell">${fmt(c.puntos)}</strong></div>
+          <div class="popup-row"><span class="popup-label">Heridos / Muertos:</span> <span class="num-cell">${fmt(c.heridos)} / ${fmt(c.muertos)}</span></div>
+          <div class="popup-row"><span class="popup-label">Peso severidad:</span> <span class="num-cell">${fmt(c.peso_total)}</span></div>
+          <div class="popup-row"><span class="popup-label">Centroide:</span> <span class="num-cell">${Number(c.lat_centro).toFixed(5)}, ${Number(c.lng_centro).toFixed(5)}</span></div>
+        `);
+        clustersLayer.addLayer(circulo);
+      });
+      clustersLayer.addTo(map);
+    } catch {
+      document.getElementById('stat-clusters').textContent = '0';
+      showToast('No se pudieron cargar los hotspots DBSCAN', 'error');
+    }
+  } else {
+    document.getElementById('stat-clusters').textContent = 'Ocultos';
+  }
+
+  actualizarLeyenda(modo, verClusters);
 }
 
-cargarPuntos();
+async function recargarDesdeApi() {
+  await cargarPuntos();
+  await aplicarFiltros();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  map = L.map('map', {
+    zoomControl: false,
+    preferCanvas: true,
+    attributionControl: true,
+  }).setView([10.9685, -74.7813], 12);
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri, HERE, Garmin',
+    maxZoom: 16,
+  }).addTo(map);
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 16,
+    opacity: 0.78,
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  if (window.innerWidth <= 700) {
+    document.getElementById('map-panels').classList.add('collapsed');
+    document.getElementById('btn-panel-mapa').setAttribute('aria-expanded', 'false');
+  }
+
+  await cargarAñosMapa();
+  await recargarDesdeApi();
+});
 </script>
 {% endblock %}

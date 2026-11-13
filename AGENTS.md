@@ -17,12 +17,15 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 
-# Ensure .env exists with GOOGLE_MAPS_KEY
-# Run the full pipeline (API → ETL → SQLite)
+# Ensure .env exists (PostgreSQL vars, APP_HOST/APP_PORT, optional GOOGLE_MAPS_KEY)
+# Run the full pipeline (API → ETL → DB)
 python main.py
 
+# Run the FastAPI web server (defaults to 127.0.0.1:8080)
+python run.py
+
 # Run tests
-python -m unittest discover tests/
+python -m unittest discover -v tests/
 ```
 
 ## Architecture
@@ -32,39 +35,39 @@ MVC layered project. Two owners, strict boundary:
 | Layer | Owner | Modules | Status |
 |-------|-------|---------|--------|
 | `api/`, `models/`, `data/`, `analytics/` | Jofier | 1–4 + Analytics | Done |
-| `controllers/`, `views/` | Juan | 5–8 | Placeholders |
+| `controllers/`, `views/` | Juan | 5–8 (FastAPI + Jinja2/ECharts/Leaflet) | Done |
 
-- `main.py` — entry point, calls `init_db()` then `ejecutar_etl()`
-- `config.py` — loads `.env`, exports `API_URL` and `GOOGLE_MAPS_KEY`
+- `main.py` — ETL CLI entry point, calls `init_db()` then `ejecutar_etl()`
+- `run.py` — Web entry point, runs `controllers.main_controller:app` via Uvicorn (`APP_HOST`/`APP_PORT`, default `127.0.0.1:8080`)
+- `config.py` — loads `.env` anchored to `BASE_DIR`, builds `DATABASE_URL` via SQLAlchemy `URL.create` (PostgreSQL with SQLite fallback), exports `API_URL`, `GOOGLE_MAPS_KEY`, `APP_HOST`, `APP_PORT`
 
 ## Analytics Module
 
 Clustering geoespacial con DBSCAN para identificar zonas críticas.
 
-- `analytics/clustering.py` — Functions: `ejecutar_clustering_dbscan()` (pure), `obtener_clusters_pipeline()` (orchestrator), `obtener_clusters()` (legacy wrapper)
-- `data/storage.py` — `obtener_para_clustering()` returns DataFrame for analytics
-- Tests: `tests/test_clustering.py` — 18 unit tests with synthetic data
+- `analytics/clustering.py` — Functions: `calcular_pesos()`, `ejecutar_clustering_dbscan()` (pure), `resumir_clusters()`, `obtener_clusters_pipeline()` (orchestrator), `obtener_clusters()` (legacy wrapper)
+- `data/storage.py` — `obtener_para_clustering()` returns 7-column geocoded DataFrame (`latitud IS NOT NULL`) for analytics
+- Tests: `tests/test_clustering.py` — unit tests with synthetic data
 
 Key design decisions:
 - **Pure function**: `ejecutar_clustering_dbscan()` never touches the database
-- **Severity weighting**: `sample_weight = cantidad_accidentes + 1.5*heridos + 3.0*muertos`
+- **Severity weighting**: `sample_weight = max(cantidad_accidentes, 1) + 1.5*heridos + 3.0*muertos`
 - **Bounding box**: Filters coordinates outside Barranquilla (10.90–11.05, -74.90–-74.75)
-- **Explicit conversion**: `kilometros_a_radianes()` eliminates magic numbers
-- **Optimized DBSCAN**: `algorithm="ball_tree"`, `n_jobs=-1`
+- **Explicit conversion**: `kilometros_a_radianes()` eliminates magic numbers (`RADIO_DEFECTO_METROS = 100.0`, `MIN_MUESTRAS_DEFECTO = 50`)
+- **Optimized DBSCAN**: `algorithm="ball_tree"`, `n_jobs=1` (thread-safe inside web server, paired with TTL cache in `controllers/main_controller.py`)
 
 ## Environment
 
-Single required env var: `GOOGLE_MAPS_KEY` in `.env` (git-ignored).
-The app warns but doesn't crash if missing — `GeoCoder` sets `self.gmaps = None`
-and `obtener_coordenadas()` returns `None` immediately, so records are stored
-without coordinates instead of crashing the pipeline.
+`.env` (git-ignored) configures PostgreSQL (`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` plus `POSTGRE_*` aliases, `POSTGRES_HOST`, `POSTGRES_PORT`), web binding (`APP_HOST`, `APP_PORT`), and optional `GOOGLE_MAPS_KEY`.
+The app warns but doesn't crash if `GOOGLE_MAPS_KEY` is missing or denied — `GeoCoder` sets `self.gmaps = None`
+and `obtener_coordenadas()` returns `None` immediately, relying on `data/geocache.json` instead of crashing the pipeline.
 
-## Database (SQLite + SQLAlchemy)
+## Database (PostgreSQL / SQLite + SQLAlchemy)
 
-- DB file: `accidentalidad.db` (git-ignored via `*.db`)
-- Engine and model live in `data/database.py`
-- `init_db()` creates tables idempotently — call it once at startup
-- Repository DAO in `data/storage.py` — always use it, never call `session` or `AccidenteDB` directly from outside
+- PostgreSQL 16 (`docker-compose.yml`, `127.0.0.1:8448:5432`) when Postgres vars are configured; local `accidentalidad.db` fallback (git-ignored via `*.db`)
+- Engine (`pool_pre_ping=True`), 4 secondary indexes (`ix_accidentes_anio`, `ix_accidentes_gravedad`, `ix_accidentes_fecha`, `ix_accidentes_coords`), and ORM model live in `data/database.py`
+- `init_db()` creates tables and indexes idempotently — call it in `main.py` CLI and FastAPI `lifespan`
+- Repository DAO in `data/storage.py` (`AccidenteRepository`) — always use it (injected via `Depends(get_repository)`), never call `session` or `AccidenteDB` directly from controllers/routes
 
 ## DTO ↔ ORM mapping gotchas
 
@@ -108,8 +111,8 @@ Autocompletion (VS Code / Copilot) silently reverts manual edits before save.
 After pasting corrected code, **always verify the file was saved** and re-read it
 before declaring "done". This has caused multiple "fix-apply-fix-again" cycles.
 
-## Future modules (for reference)
+## Web modules & remaining placeholders
 
-- Modules 5–6 (Juan): FastAPI in `controllers/main_controller.py`, endpoints for data
-- Modules 7–8 (Juan): Frontend in `views/` — Jinja2 templates, Alpine.js, Apache ECharts
-- Placeholder files (`sync_manager.py`, `logger.py`, `visualizer.py`, `app.py`, CSS/JS) are not yet implemented — do not assume they work
+- Modules 5–6: FastAPI in `controllers/main_controller.py` (REST API, `/health`, DBSCAN hotspot caching, Jinja2 routes)
+- Modules 7–8: Frontend in `views/static/css/app.css` and `views/templates/{base,index,dashboard,mapa,registro}.html` (Apache ECharts, Leaflet + `leaflet.heat` + DBSCAN hotspots)
+- `utils/logger.py` is implemented (`RotatingFileHandler` + `reiniciar_logging()`); legacy placeholders (`sync_manager.py`, `visualizer.py`, `app.py`) remain unused

@@ -22,7 +22,7 @@ de Colombia.
 - `controllers/` — Endpoints FastAPI: páginas HTML, API JSON (CRUD completo) y estadísticas.
 - `views/` — Interfaz web con plantillas Jinja2 (base, index, dashboard, mapa, registro).
 - `utils/` — Utilidades: logger centralizado (`logger.py`).
-- `tests/` — Pruebas unitarias con unittest (62 tests en 10 archivos).
+- `tests/` — Pruebas unitarias con unittest (78 tests en 12 archivos).
 - `docs/` — Documentación detallada de cada entregable.
 - `scratch/` — Archivos temporales no versionados (excluidos de git).
 
@@ -33,7 +33,7 @@ El clustering identifica zonas críticas de accidentalidad usando DBSCAN con las
 - **Ponderación por severidad**: Cada accidente tiene un peso basado en víctimas (heridos ×1.5, muertos ×3.0), no solo conteo de filas.
 - **Bounding box geográfico**: Excluye coordenadas corruptas o fuera de Barranquilla antes del cómputo.
 - **Conversión explícita**: `kilometros_a_radianes()` elimina números mágicos en el radio de vecindad.
-- **Optimización**: Usa `algorithm="ball_tree"` y `n_jobs=-1` para cálculo paralelo.
+- **Calibración y ejecución**: Parámetros calibrados por defecto (`radio_metros=100.0`, `min_muestras=50`), `algorithm="ball_tree"`, `n_jobs=1` seguro para concurrencia web y caché TTL en `/api/stats/clusters`.
 - **Separación de responsabilidades**: La función de clustering es pura (no toca la BD). El orquestador conecta el repositorio con el análisis.
 
 ```bash
@@ -74,22 +74,26 @@ python -m unittest tests.test_clustering -v
 
 6. **Levantar el servidor web** (FastAPI + interfaz):
    ```bash
-   uvicorn controllers.main_controller:app --reload
+   python run.py
+   # O directamente con Uvicorn (puerto configurable vía APP_PORT en .env, por defecto 8080)
+   uvicorn controllers.main_controller:app --host 127.0.0.1 --port 8080 --reload
    ```
-   Luego abrir en el navegador:
-   - http://127.0.0.1:8000/ — Página de inicio
-   - http://127.0.0.1:8000/dashboard — Panel de estadísticas
-   - http://127.0.0.1:8000/mapa — Mapa de calor
-   - http://127.0.0.1:8000/registro — Formulario CRUD
-   - http://127.0.0.1:8000/docs — Documentación Swagger automática
+   Luego abrir en el navegador (puerto por defecto `8080` configurable en `.env`):
+   - http://127.0.0.1:8080/ — Página de inicio
+   - http://127.0.0.1:8080/dashboard — Panel de estadísticas
+   - http://127.0.0.1:8080/mapa — Mapa de calor y hotspots DBSCAN
+   - http://127.0.0.1:8080/registro — Formulario CRUD
+   - http://127.0.0.1:8080/docs — Documentación Swagger automática
 
 ## API REST
 
-El controlador expone 17 endpoints:
+El controlador expone 4 vistas HTML, `/health` y 14 endpoints REST:
 
 | Método | Ruta | Descripción |
 |---|---|---|
+| GET | `/health` | Estado de salud de API y base de datos |
 | GET | `/api/stats/resumen` | KPIs principales |
+| GET | `/api/stats/años` | Años disponibles en base de datos |
 | GET | `/api/stats/por_año` | Accidentes por año |
 | GET | `/api/stats/por_gravedad` | Distribución por gravedad |
 | GET | `/api/stats/por_clase` | Top 10 clases |
@@ -137,6 +141,6 @@ python -m unittest tests.test_storage -v
 - **Docker Compose** orquesta PostgreSQL 16 Alpine; el puerto 8448 evita conflictos con instancias existentes de PostgreSQL en el host.
 - **FastAPI** provee endpoints REST con documentación Swagger automática y validación de parámetros.
 - **Apache ECharts** genera gráficos interactivos (líneas, barras, dona) con tema oscuro coherente.
-- **Leaflet + leaflet.heat** renderiza el mapa de Barranquilla con capas de densidad y markers por gravedad.
+- **Leaflet + leaflet.heat + DBSCAN** renderiza el mapa de Barranquilla sobre mapa base oscuro Esri con capas de densidad, markers por gravedad y hotspots DBSCAN interactivos.
 - **Jinja2** renderiza plantillas HTML del lado servidor con layout base reutilizable.
 - **Logging centralizado** (`utils/logger.py`) con formato consistente, nivel configurable y salida a consola/archivo.
